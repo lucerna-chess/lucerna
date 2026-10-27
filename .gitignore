@@ -1,0 +1,10 @@
+*.exe
+*.o
+data/
+games/
+logs/
+engines/
+reference/
+nets/*.pt
+__pycache__/
+.claude/

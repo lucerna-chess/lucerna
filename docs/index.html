@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lucerna Chess Engine</title>
+<meta name="description" content="Lucerna is an original, open-source NNUE chess engine, written from scratch and trained on its own games, rescored Lichess games and open Leela Chess Zero data.">
+<meta name="theme-color" content="#0A0B0F">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gloock&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;700&family=Noto+Sans+Symbols+2&display=swap">
+<style>
+:root {
+  --bg: #0A0B0F; --bg2: #111319; --ink: #ECE6DA; --text: #D6CFC2; --muted: #9A948A; --dim: #66615A;
+  --line: rgba(236,230,218,.13); --lamp: #FFB648; --warm: #FFE3B3; --sqd: #4C4134; --sql: #8C7C66;
+  --display: "Gloock", "Noto Serif SC", "Songti SC", Georgia, serif;
+  --serif: "Spectral", "Noto Serif SC", "Songti SC", Georgia, serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --gut: clamp(16px, 4vw, 56px);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 19px/1.65 var(--serif); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+a { color: inherit; }
+::selection { background: var(--lamp); color: var(--bg); }
+:focus-visible { outline: 2px solid var(--lamp); outline-offset: 3px; }
+h2 { text-wrap: balance; margin: 0; font: 400 clamp(46px, 7vw, 108px)/.98 var(--display); letter-spacing: -0.01em; max-width: 14ch; }
+h2 em { font-style: normal; color: var(--lamp); }
+.nw { white-space: nowrap; }
+:lang(zh) h2 { font-family: "Noto Serif SC", "Songti SC", serif; font-weight: 700; line-height: 1.15; font-size: clamp(38px, 5.6vw, 84px); max-width: 13em; }
+.rh { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 10px; margin-bottom: clamp(36px, 5vw, 72px); border-bottom: 1px solid var(--line); font: italic 400 16px var(--serif); color: var(--muted); }
+.rh .folio { font-style: normal; font-family: var(--mono); font-size: 13px; color: var(--dim); }
+.rh span:last-child { color: var(--lamp); font-style: normal; font-family: var(--mono); font-size: 18px; font-weight: 500; }
+.lede { max-width: 36em; margin: 26px 0 0; color: var(--text); font-size: clamp(18px, 1.5vw, 21px); }
+section.ch { position: relative; padding: clamp(72px, 9vw, 128px) var(--gut); }
+
+/* the room: a lamp follows the pointer through the whole page, film grain over everything */
+.room { position: fixed; inset: 0; pointer-events: none; z-index: 0;
+        background: radial-gradient(700px circle at var(--mx, 30%) var(--my, 30%), rgba(255,182,72,.10), rgba(255,182,72,.03) 40%, transparent 70%); }
+main, footer { position: relative; z-index: 1; }
+
+/* the guide: one lamp that walks the reader through the page */
+.guide { position: fixed; left: 0; top: 0; z-index: 15; pointer-events: none; opacity: 0; transition: opacity 1.2s ease; will-change: transform; }
+.guide.on { opacity: 1; }
+.guide.out { opacity: 0; transition: opacity 4.5s ease .4s; }
+.guide { display: none; }
+.guide::before { content: ""; position: absolute; left: -210px; top: -210px; width: 420px; height: 420px; border-radius: 50%;
+                 background: radial-gradient(circle, rgba(255,196,120,.30) 0, rgba(255,170,80,.12) 35%, rgba(255,150,60,.04) 55%, transparent 70%); }
+.guide i { position: absolute; left: -11px; top: -22px; width: 22px; height: 30px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%;
+           background: radial-gradient(circle at 50% 68%, #FFFFFF 0, #FFF1D2 22%, #FFC266 48%, rgba(255,122,26,.0) 78%);
+           box-shadow: 0 0 28px 10px rgba(255,182,72,.5); transform-origin: 50% 90%; animation: breathe 2.8s ease-in-out infinite; }
+@keyframes breathe { 0%, 100% { transform: scale(1) rotate(-2deg); } 50% { transform: scale(1.12, 1.2) rotate(2deg); } }
+.guide.arrive i { animation: arrive .9s cubic-bezier(.2,.7,.2,1), breathe 2.8s ease-in-out .9s infinite; }
+@keyframes arrive { 0% { transform: scale(1.9); box-shadow: 0 0 60px 26px rgba(255,182,72,.7); } 100% { transform: scale(1); } }
+/* chapters: the one the lamp is in is lit, the others rest in the dark */
+section.ch, .game { transition: filter 1s ease; }
+section.ch.dim, .game.dim { filter: brightness(.72) saturate(.85); }
+
+/* top bar */
+.bar { position: fixed; inset: 0 0 auto 0; z-index: 20; display: flex; align-items: center; gap: 24px; padding: 12px var(--gut);
+       background: rgba(10,11,15,.82); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
+.mark { display: flex; align-items: center; gap: 10px; text-decoration: none; font: 400 25px/1 var(--display); }
+.mark svg { width: 30px; height: 30px; }
+.bar nav { display: flex; gap: 30px; margin-left: auto; font: 500 16px/1 var(--serif); }
+.bar nav a { text-decoration: none; color: var(--text); transition: color .2s; }
+.bar nav a:hover { color: var(--lamp); }
+.tools { display: flex; align-items: center; gap: 16px; }
+select.lang { appearance: none; background: transparent; color: var(--text); border: 0; padding: 4px 18px 4px 0; font: 500 16px var(--serif);
+              background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(-45deg, transparent 50%, var(--muted) 50%);
+              background-position: right 6px center, right 2px center; background-size: 4px 4px; background-repeat: no-repeat; cursor: pointer; }
+select.lang option { background: var(--bg2); }
+.gh { font: 500 15px var(--serif); text-decoration: none; color: var(--text); }
+.gh:hover { color: var(--lamp); }
+
+/* hero: a dark room, one lamp, a pawn whose shadow is a king */
+.hero { position: relative; z-index: 2; height: 100vh; height: 100svh; min-height: 640px; overflow: hidden; cursor: none; touch-action: pan-y;
+        background: radial-gradient(120% 80% at 50% 0%, #15171F 0%, var(--bg) 60%); }
+.hero.touch { cursor: auto; } .hero a { cursor: pointer; }
+.stage { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.dark { position: absolute; inset: 0; pointer-events: none;
+        background: radial-gradient(ellipse 62vw 95vh at var(--lx, 70%) var(--ly, 30%), rgba(255,182,72,.10) 0, rgba(10,11,15,0) 30%, rgba(10,11,15,.18) 58%, rgba(10,11,15,.7) 85%, rgba(10,11,15,.9) 100%); }
+.floorfade { position: absolute; left: 0; right: 0; bottom: 0; height: 42%; z-index: 2; pointer-events: none; background: linear-gradient(rgba(10,11,15,0), rgba(10,11,15,.78) 55%, rgba(10,11,15,.94)); }
+.hero h1 { position: absolute; z-index: 3; left: var(--gut); top: 128px; margin: 0 0 0 -0.03em; pointer-events: none;
+           font: 400 clamp(84px, 15.5vw, 250px)/.86 var(--display); letter-spacing: -0.02em;
+           background: radial-gradient(circle at var(--tx, 60%) var(--ty, 0%), #FFF4DF 0, var(--warm) 14%, var(--ink) 34%, #A39C90 80%);
+           -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero .kick { position: absolute; z-index: 3; left: var(--gut); top: calc(128px + clamp(84px, 15.5vw, 250px) * .9 + 8px); font: 500 14px var(--mono); color: var(--lamp); }
+.copy { position: absolute; z-index: 3; right: var(--gut); bottom: clamp(32px, 7vh, 72px); width: min(440px, 100% - 2 * var(--gut)); }
+.copy p { margin: 0; color: var(--text); font-size: 19px; }
+.links { display: flex; flex-wrap: wrap; gap: 10px 26px; margin-top: 20px; font: 500 18px var(--serif); }
+.links a { text-decoration: none; border-bottom: 1px solid rgba(255,182,72,.5); padding-bottom: 2px; color: var(--ink); transition: color .2s, border-color .2s; }
+.links a:first-child { color: var(--lamp); }
+.links a:hover { color: var(--warm); border-color: var(--warm); }
+
+/* the game: a real game, played as you scroll */
+.game { position: relative; padding: clamp(80px, 9vw, 120px) var(--gut) 0; }
+.game > .rh { margin-bottom: clamp(28px, 3vw, 44px); }
+.game::before { content: ""; position: absolute; inset: 0; pointer-events: none;     /* the game is played on a dark wooden table */
+  background: linear-gradient(var(--bg), rgba(10,11,15,.32) 16%, rgba(10,11,15,.30) 82%, var(--bg)), linear-gradient(90deg, rgba(10,11,15,.82), rgba(10,11,15,.55) 40%, rgba(10,11,15,0) 62%), radial-gradient(ellipse at 70% 50%, rgba(255,182,72,.10), transparent 60%), url(img/wood.jpg) center / cover fixed; }
+.game > * { position: relative; }
+.gtrack { position: relative; height: calc(100vh + 52 * 28px); }
+.gstick { position: sticky; top: 0; height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0 clamp(20px, 3vw, 44px); align-items: center; padding-top: 60px; }
+.gside { align-self: center; max-width: 30em; }
+.evnum { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.evnum b { font: 400 clamp(64px, 8vw, 128px)/1 var(--display); color: var(--lamp); min-width: 3.3ch; font-variant-numeric: tabular-nums; }
+.evnum span { color: var(--muted); font-size: 16px; }
+.gnote { min-height: 3.4em; margin: 16px 0 0; font-size: clamp(19px, 1.6vw, 23px); color: var(--ink); transition: opacity .3s; }
+.moves { margin: 20px 0 0; padding: 12px 0 0; list-style: none; border-top: 1px solid var(--line); position: relative;
+         font: 400 14px/1.75 var(--mono); color: var(--muted); columns: 3; column-gap: 18px; }
+.moves li { break-inside: avoid; white-space: nowrap; }
+.moves .n { display: inline-block; width: 2.6em; color: var(--dim); }
+.moves a { display: inline-block; min-width: 3.6em; text-decoration: none; cursor: pointer; transition: color .2s; }
+.moves a:hover { color: var(--ink); }
+.moves a.on { color: var(--bg); background: var(--lamp); padding: 0 4px; margin: 0 -4px; }
+.gres { margin-top: 12px; font: 400 14px/1.5 var(--serif); font-style: italic; color: var(--muted); }
+.gboard { --s: min(76vh - 70px, 44vw); position: relative; width: var(--s); height: var(--s); display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr);
+          box-shadow: 0 40px 120px -30px rgba(0,0,0,.9), 0 0 0 1px rgba(255,227,179,.08); }
+.sq { position: relative; display: grid; place-items: center; background: rgba(38,26,17,.86); }
+.sq.l { background: rgba(214,178,128,.78); }
+.gboard { background: url(img/wood.jpg) center / 220% auto; }
+.gboard { box-shadow: 0 0 0 14px #2A1B10, 0 0 0 15px rgba(255,227,179,.14), 0 40px 110px -20px rgba(0,0,0,.95) !important; }
+.sq.from::before, .sq.to::before { content: ""; position: absolute; inset: 0; background: rgba(255,182,72,.28); }
+.sq.to::before { background: rgba(255,182,72,.45); }
+.pc { position: relative; font: calc(var(--s) / 8 * .78)/1 "Noto Sans Symbols 2", "Segoe UI Symbol", sans-serif; user-select: none; }
+.pc.w { color: #F6EFE2; text-shadow: 0 0 1px #15110E, 0 0 1px #15110E, 2px 4px 4px rgba(0,0,0,.55); }
+.pc.b { color: #120E0B; text-shadow: 0 0 1px rgba(255,236,200,.95), 0 0 1px rgba(255,236,200,.95), 0 0 3px rgba(255,227,179,.35), 2px 4px 4px rgba(0,0,0,.55); }
+.gboard::after { content: ""; position: absolute; inset: 0; pointer-events: none; transition: background-position .5s;
+                 background: radial-gradient(circle at var(--gx, 50%) var(--gy, 50%), rgba(255,206,130,.42) 0, rgba(255,190,100,.12) 14%, rgba(10,11,15,0) 26%, rgba(10,11,15,.28) 60%, rgba(10,11,15,.48) 100%); }
+.gboard.flare::after { animation: flare .9s ease-out; }
+@keyframes flare { 0% { filter: brightness(1.9); } 100% { filter: brightness(1); } }
+.files, .ranks { position: absolute; display: flex; font: 500 12px var(--mono); color: var(--dim); }
+.files { left: 0; right: 0; bottom: -34px; } .files span { flex: 1; text-align: center; }
+.ranks { top: 0; bottom: 0; left: -30px; flex-direction: column; } .ranks span { flex: 1; display: grid; place-items: center; }
+.evbar { position: relative; width: 12px; height: min(76vh - 70px, 44vw); background: #15110E; box-shadow: 0 0 0 1px rgba(255,227,179,.1); }
+.evbar i { position: absolute; left: 0; right: 0; bottom: 0; height: 50%; background: linear-gradient(var(--warm), #F6EFE2); transition: height .45s cubic-bezier(.2,.7,.2,1); }
+.evbar::after { content: ""; position: absolute; left: -4px; right: -4px; top: 50%; height: 1px; background: var(--lamp); }
+
+.ops { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: clamp(32px, 5vw, 80px); align-items: start; padding: 0 0 clamp(96px, 12vw, 160px); }
+.opside .lede { margin-bottom: clamp(28px, 4vw, 48px); }
+.ops .rh { margin-bottom: 40px; }
+.obd { --s: min(100vh - 230px, 46vw); margin-top: 14px; position: relative; display: block; }
+.ob-in { position: absolute; inset: 0; transition: transform 1s cubic-bezier(.6,0,.3,1); }
+.ob-in.flip { transform: rotate(180deg); }
+.osq, .ohl, .ob-in .pc { position: absolute; width: 12.5%; height: 12.5%; }
+.osq { background: rgba(78,56,38,.84); } .osq.l { background: rgba(214,178,128,.78); }
+.ohl { background: rgba(255,182,72,.36); opacity: 0; transition: left .3s, top .3s, opacity .3s; }
+.ob-in .pc { display: grid; place-items: center; transition: left .55s cubic-bezier(.3,.7,.2,1), top .55s cubic-bezier(.3,.7,.2,1), opacity .4s, transform 1s cubic-bezier(.6,0,.3,1); }
+.ob-in.flip .pc { transform: rotate(-180deg); }
+.ob-in .pc.ghost { color: rgba(6,4,2,.78); text-shadow: none; transform-origin: 50% 88%; transform: skewX(-26deg) scaleY(1.32) translateX(6%);
+                  filter: blur(.8px); animation: ghostin .55s ease-out both; pointer-events: none; z-index: 0; }
+.ob-in.flip .pc.ghost { transform: rotate(-180deg) skewX(-26deg) scaleY(1.32) translateX(6%); }
+.ob-in .pc.ghost.gone { animation: none; opacity: 0; transition: opacity .35s; }
+@keyframes ghostin { from { opacity: 0; filter: blur(5px); } to { opacity: 1; filter: blur(.8px); } }
+.ob-in.gather .pc { transition-duration: 1s, 1s, .6s, 1s; }
+.opnum { font: 500 15px var(--mono); color: var(--muted); }
+.opname { margin-top: 10px; font: 400 clamp(36px, 4.2vw, 64px)/1.05 var(--display); color: var(--lamp); height: 2.1em; display: flex; align-items: flex-end; text-wrap: balance; }
+:lang(zh) .opname { font-family: "Noto Serif SC", serif; font-weight: 700; }
+.opmoves { margin: 24px 0 0; padding: 14px 0 0; list-style: none; border-top: 1px solid var(--line); font: 400 17px/2 var(--mono); color: var(--muted); columns: 2; column-gap: 24px; }
+.opmoves li { break-inside: avoid; }
+.opmoves .n { display: inline-block; width: 2.4em; }
+.opmoves .m { display: inline-block; min-width: 4em; transition: color .3s; }
+.opmoves .m.done { color: var(--ink); }
+.opmoves .m.on { color: var(--bg); background: var(--lamp); padding: 0 4px; margin-left: -4px; min-width: 0; margin-right: calc(4em - 4px); }
+
+/* the mark */
+.story { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); grid-template-areas: "head pic" "text pic"; gap: clamp(32px, 6vw, 96px); }
+.story .head { grid-area: head; } .story .lede { grid-area: text; align-self: end; } .story figure { grid-area: pic; }
+figure { margin: 0; }
+.pic { position: relative; overflow: hidden; background: var(--bg2); }
+.pic img { display: block; width: 100%; height: 100%; object-fit: cover; filter: grayscale(1) contrast(1.12) brightness(.92); transform: scale(1.06); transition: transform 1.8s cubic-bezier(.2,.7,.2,1); }
+.rv.in .pic img, .pic.in img { transform: scale(1); }
+.pic::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(#FFB648, #E0862C); mix-blend-mode: multiply; opacity: .55; }
+.pic::after { content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; box-shadow: inset 0 0 120px 30px rgba(10,11,15,.85); }
+figcaption { margin-top: 12px; font: 400 13px var(--mono); color: var(--dim); }
+figcaption a { color: var(--muted); text-decoration: none; } figcaption a:hover { color: var(--lamp); }
+.story .pic { aspect-ratio: 4 / 5; }
+
+/* the search tree: lines that grow out of the white pawn towards the opposing army */
+.tree { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; overflow: visible; }
+.tree line { stroke: rgba(255,214,150,.55); stroke-width: .28; stroke-linecap: round; stroke-dasharray: 60; stroke-dashoffset: 60; transition: stroke-dashoffset 1.1s cubic-bezier(.3,.7,.2,1); }
+.tree line.pv { stroke: #FFC266; stroke-width: .5; filter: drop-shadow(0 0 1.2px rgba(255,182,72,.9)); }
+.tree circle { fill: #FFE3B3; opacity: 0; transition: opacity .5s; }
+.tree text { font: 500 2.6px var(--mono); fill: rgba(255,227,179,.85); opacity: 0; transition: opacity .6s; }
+.tree text.pv { fill: #FFC266; font-size: 3.2px; }
+.band.in .tree line { stroke-dashoffset: 0; } .band.in .tree circle, .band.in .tree text { opacity: 1; }
+
+/* rooms: every chapter stands in its own dim space, tinted ink and amber, edges falling to black */
+section.ch { isolation: isolate; }
+section.ch::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: var(--room) center / cover no-repeat; opacity: var(--room-o, .2);
+  -webkit-mask-image: radial-gradient(ellipse 75% 70% at var(--room-at, 50% 50%), #000 30%, transparent 85%); mask-image: radial-gradient(ellipse 75% 70% at var(--room-at, 50% 50%), #000 30%, transparent 85%); }
+#mark::before { display: none; }
+#inside { --room: url(img/bg-paper.webp); --room-o: .14; }
+#data { --room: url(img/bg-library.webp); --room-o: .26; --room-at: 70% 45%; }
+#data .lede { text-shadow: 0 1px 12px rgba(10,11,15,.9); }
+#get::before { display: none; }
+#road::before { display: none; }
+.next p > span { text-shadow: 0 1px 14px rgba(10,11,15,.95); }
+#thanks { --room: url(img/bg-paper.webp); --room-o: .14; }
+/* the hero's back wall is real plaster, so the king's shadow falls on something */
+.hero::before { content: ""; position: absolute; inset: 0 0 32% 0; pointer-events: none; background: url(img/bg-plaster-wall.webp) center / cover; opacity: .42; mix-blend-mode: soft-light;
+  -webkit-mask-image: linear-gradient(#000 55%, transparent); mask-image: linear-gradient(#000 55%, transparent); }
+
+/* inside: set like a page from a chess book */
+.band { margin: clamp(48px, 7vw, 96px) calc(var(--gut) * -1) 0; }
+.band .pic { aspect-ratio: 21 / 9; }
+.band figcaption { padding: 0 var(--gut); }
+.book { margin-top: clamp(48px, 6vw, 80px); columns: 3 18em; column-gap: clamp(32px, 4vw, 64px); column-rule: 1px solid var(--line); color: var(--text); font-size: 19px; hyphens: auto; }
+.book p { margin: 0 0 1.2em; break-inside: avoid-column; }
+.book p:first-child::first-letter { float: left; font: 400 4.2em/.8 var(--display); color: var(--lamp); margin: .06em .1em 0 0; }
+:lang(zh) .book p:first-child::first-letter { font-family: "Noto Serif SC", serif; font-weight: 700; font-size: 3em; }
+.book b { font-weight: 600; color: var(--ink); }
+
+/* see how it thinks: one position, five steps, the scene stays while you scroll */
+.think { position: relative; isolation: isolate; }
+.think::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: url(img/bg-chess-book.webp) center / cover; opacity: .16;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 65% 50%, #000 25%, transparent 85%); mask-image: radial-gradient(ellipse 70% 60% at 65% 50%, #000 25%, transparent 85%); }
+.think-track { height: 360vh; }
+.think-stick { position: sticky; top: 0; height: 100vh; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 80px); align-items: center; padding: 70px var(--gut) 20px; }
+.think-text h2 { margin-bottom: clamp(28px, 4vw, 48px); }
+.steps { position: relative; min-height: 13em; }
+.step { position: absolute; inset: 0; opacity: 0; transform: translateY(18px); transition: opacity .6s, transform .6s cubic-bezier(.2,.7,.2,1); }
+.step.on { opacity: 1; transform: none; }
+.step .num { font: 500 15px var(--mono); color: var(--lamp); }
+.step h3 { margin: 8px 0 12px; font: 400 clamp(32px, 3.4vw, 50px)/1.05 var(--display); }
+:lang(zh) .step h3 { font-family: "Noto Serif SC", serif; font-weight: 700; }
+.step p { margin: 0; color: var(--text); font-size: 19px; max-width: 26em; }
+.pager { display: flex; gap: 8px; margin-top: 18px; }
+.pager i { width: 30px; height: 3px; background: var(--line); transition: background .4s; }
+.pager i.on { background: var(--lamp); }
+.viz { position: relative; height: min(70vh, 600px); perspective: 1500px; }
+.viz > * { position: absolute; inset: 0; margin: auto; }
+.stack { --bs: min(380px, 34vw); width: var(--bs); height: var(--bs); transform-style: preserve-3d; transition: transform 1s cubic-bezier(.2,.8,.2,1), opacity .7s; }
+.layer { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); transition: transform 1s cubic-bezier(.2,.8,.2,1), opacity .7s; }
+.layer.base { background: url(img/wood.jpg) center / 220% auto; box-shadow: 0 0 0 12px #2A1B10, 0 0 0 13px rgba(255,227,179,.14), 0 40px 90px -20px rgba(0,0,0,.95); }
+.layer.base div { display: grid; place-items: center; background: rgba(214,178,128,.78); font: calc(var(--bs) / 11) / 1 "Noto Sans Symbols 2", "Segoe UI Symbol", sans-serif; transition: color .5s, text-shadow .5s; }
+.layer.base div.d { background: rgba(78,56,38,.84); }
+.layer.base div.w { color: #F6EFE2; text-shadow: 0 0 1px #15110E, 0 0 1px #15110E, 2px 3px 3px rgba(0,0,0,.5); }
+.layer.base div.b { color: #120E0B; text-shadow: 0 0 1px rgba(255,236,200,.95), 0 0 1px rgba(255,236,200,.95), 2px 3px 3px rgba(0,0,0,.5); }
+.layer.bb { opacity: 0; background: rgba(16,13,10,.86); box-shadow: 0 0 0 1px rgba(255,214,150,.22), 0 10px 24px -12px rgba(0,0,0,.9); }
+.layer.bb div { box-shadow: inset 0 0 0 .5px rgba(255,214,150,.07); }
+.layer.bb div.on { background: var(--c); box-shadow: 0 0 10px rgba(255,182,72,.5); }
+.layer.bb .lbl { position: absolute; left: calc(100% + 14px); top: 50%; transform: translateY(-50%); font: 400 12px var(--mono); color: var(--muted); white-space: nowrap; }
+.karrow { position: absolute; inset: 0; opacity: 0; transition: opacity .5s .4s; pointer-events: none; overflow: visible; }
+.karrow line { stroke: var(--lamp); stroke-width: 5; stroke-linecap: round; stroke-dasharray: 200; stroke-dashoffset: 200; transition: stroke-dashoffset .9s .5s; filter: drop-shadow(0 0 4px rgba(255,182,72,.8)); }
+.karrow polygon { fill: var(--lamp); opacity: 0; transition: opacity .3s 1.2s; }
+.evalchip { position: absolute; top: -52px; right: 0; padding: 6px 14px; background: var(--lamp); color: var(--bg); font: 500 15px var(--mono); opacity: 0; transform: translateY(6px); transition: opacity .5s .9s, transform .5s .9s; }
+.s2 .stack { transform: rotateX(58deg) rotateZ(-36deg) translateZ(-60px); }
+.s2 .layer.bb { opacity: 1; transform: translateZ(calc((var(--i) + 1) * 22px)); }
+.s2 .layer.base div { color: transparent !important; text-shadow: none !important; }
+.s3 .stack, .s4 .stack { opacity: 0; transform: rotateX(58deg) rotateZ(-36deg) translateZ(-300px) scale(.6); }
+.s5 .stack { transform: none; opacity: 1; }
+.s5 .karrow { opacity: 1; } .s5 .karrow line { stroke-dashoffset: 0; } .s5 .karrow polygon { opacity: 1; }
+.s5 .evalchip { opacity: 1; transform: none; }
+.knet, .ktree { width: min(600px, 100%); height: auto; opacity: 0; transform: translateY(14px); transition: opacity .7s, transform .7s; pointer-events: none; }
+.s3 .knet, .s4 .ktree { opacity: 1; transform: none; }
+.knet .edge { stroke: rgba(236,230,218,.10); stroke-width: 1; }
+.knet .edge.hot { stroke: var(--lamp); stroke-width: 1.5; stroke-dasharray: 4 10; animation: flow 1.1s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -28; } }
+.knet .n, .knet .h { fill: var(--bg2); stroke: var(--ink); stroke-width: 1.4; }
+.knet .n.lit { fill: var(--ink); }
+.knet .h.lit { fill: var(--lamp); stroke: var(--lamp); filter: drop-shadow(0 0 6px rgba(255,182,72,.7)); }
+.knet .out { fill: var(--lamp); filter: drop-shadow(0 0 10px rgba(255,182,72,.8)); }
+.knet text, .ktree text { fill: var(--muted); font: 400 13px var(--mono); }
+.knet text.big { fill: var(--lamp); font: 400 30px var(--display); }
+.ktree line { stroke: rgba(236,230,218,.45); stroke-width: 1.4; }
+.ktree circle { fill: var(--ink); }
+.ktree .pruned line { stroke: rgba(236,230,218,.16); stroke-dasharray: 3 4; }
+.ktree .pruned circle { fill: rgba(236,230,218,.22); }
+.ktree .best line { stroke: var(--lamp); stroke-width: 3; filter: drop-shadow(0 0 4px rgba(255,182,72,.8)); }
+.ktree .best circle { fill: var(--lamp); }
+.ktree g.d { opacity: 0; transition: opacity .45s; }
+.s4 .ktree g.d1 { opacity: 1; transition-delay: .1s; } .s4 .ktree g.d2 { opacity: 1; transition-delay: .35s; } .s4 .ktree g.d3 { opacity: 1; transition-delay: .65s; }
+.counter { position: absolute; left: 0; right: 0; top: auto !important; bottom: 0; height: auto; text-align: center; color: var(--muted); font-size: 15px; opacity: 0; transition: opacity .5s .5s; }
+.s4 .counter { opacity: 1; }
+.counter b { color: var(--lamp); font: 400 34px var(--display); font-variant-numeric: tabular-nums; }
+
+/* data: the board itself is the chart */
+.data { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: clamp(32px, 6vw, 96px); align-items: center; margin-top: clamp(48px, 6vw, 80px); }
+.dboard { display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; max-width: 560px; box-shadow: 0 0 0 1px rgba(255,227,179,.1); }
+.dboard i { background: #1F1A15; transition: background-color .35s; }
+.dboard i.l { background: #29231C; }
+.dboard i.on.a { background: #B8792E; } .dboard i.on.a.l { background: #D0913F; }
+.dboard i.on.b { background: #A8977A; } .dboard i.on.b.l { background: #C2B193; }
+.dboard i.on.c { background: #5E554B; } .dboard i.on.c.l { background: #776C60; }
+.legend { list-style: none; margin: 0; padding: 0; }
+.legend li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 4px 18px; padding: 22px 0; border-top: 1px solid var(--line); }
+.legend li:last-child { border-bottom: 1px solid var(--line); }
+.legend i { width: 18px; height: 18px; margin-top: 14px; }
+.legend b { font: 400 clamp(44px, 5vw, 72px)/1 var(--display); }
+.legend span { grid-column: 2; color: var(--text); font-size: 17px; }
+.legend small { font: 500 14px var(--mono); color: var(--muted); margin-left: 8px; }
+.note { margin: clamp(48px, 6vw, 72px) 0 0; max-width: 30em; font: 400 clamp(22px, 2.2vw, 30px)/1.35 var(--serif); font-style: italic; color: var(--ink); }
+:lang(zh) .note { font-style: normal; }
+
+/* download: the pawn you take home, and three builds */
+.take { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); align-items: stretch; gap: clamp(24px, 4vw, 56px); margin-top: clamp(48px, 7vw, 96px); }
+
+.builds { border-top: 1px solid var(--line); align-self: start; }
+.tk { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 24px; padding: 26px 0; border-bottom: 1px solid var(--line); text-decoration: none; transition: padding .35s cubic-bezier(.2,.7,.2,1); }
+.tk .arch { font: 500 clamp(22px, 2vw, 28px)/1.2 var(--mono); color: var(--ink); }
+.tk .arch small { font: 400 14px var(--serif); font-style: italic; color: var(--lamp); margin-left: 10px; }
+.tk p { grid-column: 1; margin: 0; color: var(--text); font-size: 17px; }
+.tk .go { grid-column: 2; grid-row: 1 / span 2; align-self: center; font: 400 34px/1 var(--display); color: var(--muted); transition: color .3s, transform .3s; }
+.tk:hover { padding-left: 14px; } .tk:hover .go { color: var(--lamp); transform: translateY(4px); }
+.crop { margin-top: 36px; } .crop .pic { aspect-ratio: 16 / 10; }
+.after { margin: 0; color: var(--text); font-size: 19px; max-width: 24em; }
+.after a { display: inline-block; margin-top: 14px; color: var(--lamp); text-decoration: none; border-bottom: 1px solid rgba(255,182,72,.4); }
+
+/* what's next: run-in paragraphs, as in a book */
+.next { margin-top: clamp(48px, 6vw, 80px); max-width: 1100px; }
+.next p { margin: 0 0 clamp(28px, 3vw, 44px); font: 400 clamp(22px, 2.3vw, 32px)/1.45 var(--serif); color: var(--ink); }
+.next p { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 7fr); gap: 0 clamp(24px, 4vw, 56px); padding-top: clamp(20px, 2.4vw, 32px); border-top: 1px solid var(--line); }
+.next b { grid-row: 1 / span 4; font: 400 clamp(56px, 6vw, 96px)/.9 var(--display); color: var(--muted); }
+.next p > span { grid-column: 2; }
+.next .now b { color: var(--lamp); text-shadow: 0 0 40px rgba(255,182,72,.55), 0 0 120px rgba(255,182,72,.35); }
+.next .when { font: italic 400 .62em/1.6 var(--serif); color: var(--lamp); }
+.next .sub { color: var(--muted); font-size: .78em; margin-top: 6px; }
+
+
+/* thanks */
+.thanks { margin: clamp(40px, 5vw, 72px) 0 0; max-width: 34em; font: 400 clamp(22px, 2.3vw, 32px)/1.5 var(--serif); color: var(--text); }
+.thanks a { color: var(--ink); text-decoration: none; }
+.thanks a:hover { color: var(--lamp); }
+.cr { padding: 24px 0; border-top: 1px solid var(--line); }
+.cr a { font: 400 clamp(28px, 3vw, 42px)/1.1 var(--display); text-decoration: none; transition: color .25s; }
+.cr a:hover { color: var(--lamp); }
+.cr p { margin: 10px 0 0; color: var(--text); font-size: 17px; max-width: 30em; }
+
+/* the end: the lamp dims, the pawn stays */
+.end { position: relative; padding: clamp(80px, 12vw, 160px) var(--gut) 0; text-align: center; overflow: hidden; }
+.end::before { content: ""; position: absolute; left: var(--fx, 0px); top: var(--fy, 0px); width: calc(760px * var(--fs, 1)); height: calc(570px * var(--fs, 1)); pointer-events: none;   /* an old lamp, slowly going out; its flame sits where the guide comes to rest */
+  background: url(img/lantern.jpg) 0 0 / 100% 100%; opacity: .55; filter: sepia(.35) saturate(1.2);
+  -webkit-mask-image: radial-gradient(ellipse 45% 55% at 63% 46%, #000 25%, transparent 75%); mask-image: radial-gradient(ellipse 45% 55% at 63% 46%, #000 25%, transparent 75%);
+  transition: opacity 4.5s ease 2.8s; }
+.end.out::before { opacity: .14; }
+.end > * { position: relative; }
+.end svg { display: block; width: min(720px, 100%); height: auto; margin: 0 auto; overflow: visible; }
+.end .glow, .end .kshadow { transition: opacity 4.5s ease 2.8s; }
+.end.out .glow { opacity: .22; } .end.out .kshadow { opacity: .45; }
+.end .kmove { transition: transform .55s cubic-bezier(.7,0,.2,1) 1.1s; }
+.end.out .kmove { transform: translateX(118px); }
+.end.out .kshadow { animation: tense 1.1s ease-in-out; }
+@keyframes tense { 40% { fill-opacity: 1; } 70% { fill-opacity: .7; } }
+.end p { margin: 36px auto 0; max-width: 24em; font: italic 400 clamp(22px, 2.4vw, 32px)/1.35 var(--serif); color: var(--text); }
+:lang(zh) .end p { font-style: normal; }
+.foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 32px; margin-top: clamp(64px, 9vw, 120px); padding: 28px var(--gut) 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; text-align: left; }
+.foot a { color: var(--muted); } .foot a:hover { color: var(--lamp); }
+
+.thanks a, .after a, .links a, .foot a { text-decoration: none; border: 0; padding-bottom: 2px;
+  background: linear-gradient(var(--lamp), var(--lamp)) left bottom / 0 1px no-repeat, linear-gradient(rgba(236,230,218,.25), rgba(236,230,218,.25)) left bottom / 100% 1px no-repeat;
+  transition: background-size .45s cubic-bezier(.2,.7,.2,1), color .25s; }
+.thanks a:hover, .after a:hover, .links a:hover, .foot a:hover { background-size: 100% 1px, 100% 1px; color: var(--warm); }
+.links a:first-child { background-size: 100% 1px, 100% 1px; }
+/* title page */
+.titlepage { text-align: center; }
+.titlepage .rh { text-align: left; }
+.titlepage h2 { margin-left: auto; margin-right: auto; }
+.orn { display: block; width: 30px; height: 44px; margin: clamp(40px, 5vw, 64px) auto 0; filter: drop-shadow(0 0 18px rgba(255,182,72,.6)); }
+.titlepage .thanks { margin: 28px auto 0; max-width: 30em; }
+/* download: the photograph stands beside the builds; the builds read like titles */
+
+.crop { margin: 0; display: flex; flex-direction: column; } .crop .pic { flex: 1; aspect-ratio: auto; min-height: 420px; }
+.take .builds { margin-top: 36px; }
+.tk .arch { font-size: clamp(26px, 2.6vw, 38px); }
+/* what's next: each version lights up as the lamp reaches it */
+.next p b { transition: color .8s, text-shadow .8s; color: var(--dim); }
+.next p.lit b { color: var(--lamp); text-shadow: 0 0 40px rgba(255,182,72,.55), 0 0 120px rgba(255,182,72,.35); }
+.next p:not(.lit) .when { color: var(--dim); }
+/* the hero lights up once, when the page opens */
+.hero::after { content: ""; position: absolute; inset: 0; z-index: 5; pointer-events: none; background: #050608; animation: lightup 1.5s cubic-bezier(.4,0,.2,1) .1s forwards; }
+.hero.lit::after { display: none; }
+body.lit .bar { animation: none; opacity: 1; }
+.bar { animation: barin 1.2s ease .6s both; }
+@keyframes barin { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lightup { 0% { opacity: 1; } 35% { opacity: .85; } 100% { opacity: 0; visibility: hidden; } }
+/* Chinese text keeps a comfortable measure */
+:lang(zh) .lede, :lang(zh) .book p, :lang(zh) .thanks { max-width: 30em; }
+
+/* reveal on scroll (only when JS is running) */
+.js .rv { opacity: 0; transform: translateY(28px); transition: opacity .9s cubic-bezier(.2,.7,.2,1), transform .9s cubic-bezier(.2,.7,.2,1); }
+.js .rv.in { opacity: 1; transform: none; }
+
+@media (max-width: 900px) {
+  body { font-size: 18px; }
+  .bar nav { display: none; }
+  .gh { display: none; }
+  .hero h1 { top: 104px; }
+  .hero .kick { top: calc(104px + clamp(84px, 15.5vw, 250px) * .9 + 6px); }
+  .copy { left: var(--gut); right: var(--gut); width: auto; }
+  .ops { grid-template-columns: 1fr; } .obd { --s: min(100vw - 2 * var(--gut) - 28px, 60vh); justify-self: center; grid-row: 1; margin-top: 14px; } .opname { font-size: 34px; }
+  .opmoves { font-size: 14px; column-gap: 12px; } .opmoves .n { width: 2em; } .opmoves .m { min-width: 3.4em; } .opmoves li { white-space: nowrap; } .opmoves .m.on { margin-right: calc(3.4em - 4px); }
+  .gstick { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-content: start; gap: 14px 12px; padding-top: 70px; }
+  .gboard { --s: min(100vw - 2 * var(--gut) - 30px, 52vh); grid-column: 1; grid-row: 1; justify-self: end; }
+  .evbar { grid-column: 2; grid-row: 1; height: min(100vw - 2 * var(--gut) - 30px, 52vh); }
+  .gside { grid-column: 1 / -1; grid-row: 2; }
+  .evnum b { font-size: 52px; }
+  .gnote { min-height: 0; font-size: 17px; margin-top: 4px; }
+  .gstick { align-content: center; }
+  .moves { display: flex; columns: auto; overflow-x: auto; scrollbar-width: none; gap: 14px; margin-top: 8px; padding: 8px 0; }
+  .moves li { flex: none; }
+  .moves .n { width: auto; margin-right: 6px; }
+  .moves a { min-width: 0; margin-right: 8px; }
+  .gres { font-size: 13px; }
+  .ranks { display: none; } .files { display: none; }
+  .story { grid-template-columns: 1fr; grid-template-areas: "head" "pic" "text"; } .story .pic { aspect-ratio: 4 / 3; }
+  .band .pic { aspect-ratio: 4 / 3; }
+  .tree { display: none; }
+  section.ch::before { opacity: calc(var(--room-o, .2) * .8); }
+  .data, .take { grid-template-columns: 1fr; }
+  .think-track { height: 420vh; }
+  .think-stick { grid-template-columns: 1fr; grid-template-rows: auto 1fr; align-items: start; gap: 8px; padding-top: 72px; }
+  .think-text h2 { font-size: 34px; margin-bottom: 12px; }
+  .steps { min-height: 9.5em; } .step h3 { font-size: 26px; margin: 4px 0 6px; } .step p { font-size: 16px; }
+  .pager { margin-top: 6px; }
+  .viz { height: 46vh; } .stack { --bs: min(250px, 62vw); } .layer.bb .lbl { display: none; }
+  .crop .pic { min-height: 0; aspect-ratio: 4 / 3; }
+  .guide::before { left: -130px; top: -130px; width: 260px; height: 260px; }
+  .next p { grid-template-columns: 1fr; } .next b { grid-row: auto; margin-bottom: 10px; } .next p > span { grid-column: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero::after { display: none; }
+  .bar { animation: none; }
+  .guide i { animation: none; }
+  html { scroll-behavior: auto; }
+  .js .rv { opacity: 1; transform: none; transition: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="room" aria-hidden="true"></div>
+<div class="guide" id="guide" aria-hidden="true"><i></i></div>
+<header class="bar">
+  <a class="mark" href="#top" aria-label="Lucerna">
+    <svg viewBox="0 0 128 128" aria-hidden="true">
+      <rect width="128" height="128" rx="28" fill="#FFB648"/>
+      <circle cx="21" cy="23" r="13" fill="#FFF6E5" opacity=".18"/><circle cx="21" cy="23" r="5" fill="#FFF6E5"/>
+      <g fill="#B96F1C" transform="translate(52 109) skewX(-22) scale(0.97)"><use href="#kingP"/></g>
+      <g fill="#0A0B0F" transform="translate(44 109)"><use href="#pawnP"/></g>
+    </svg>
+  </a>
+  <nav>
+    <a href="#game" data-t="n1">Openings</a><a href="#inside" data-t="n2">Inside</a><a href="#data" data-t="n3">Data</a><a href="#get" data-t="n4">Download</a><a href="#thanks" data-t="n5">Thanks</a>
+  </nav>
+  <div class="tools">
+    <select class="lang" id="lang" aria-label="Language">
+      <option value="en">English</option><option value="zh-Hans">简体中文</option><option value="zh-Hant">繁體中文</option>
+      <option value="ms">Bahasa Melayu</option><option value="es">Español</option><option value="de">Deutsch</option>
+    </select>
+    <a class="gh" href="https://github.com/lucerna-chess/lucerna">GitHub</a>
+  </div>
+</header>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="kingP">
+      <path d="M-3.2 -100 H3.2 V-93 H10 V-86.6 H3.2 V-79 H-3.2 V-86.6 H-10 V-93 H-3.2 Z"/>
+      <path d="M-17 -76 C-6 -80 6 -80 17 -76 C15 -70 12.5 -64 11.5 -57 H-11.5 C-12.5 -64 -15 -70 -17 -76 Z"/>
+      <path d="M-15 -55.5 Q0 -58.5 15 -55.5 Q16.5 -52.5 15 -49.5 Q0 -51.5 -15 -49.5 Q-16.5 -52.5 -15 -55.5 Z"/>
+      <path d="M-8.5 -49 H8.5 C8.8 -34 11.5 -22 19 -13 H-19 C-11.5 -22 -8.8 -34 -8.5 -49 Z"/>
+      <path d="M-21 -13 H21 Q25 -11 25 -7 V-3 Q25 0 21 0 H-21 Q-25 0 -25 -3 V-7 Q-25 -11 -21 -13 Z"/>
+    </g>
+    <g id="pawnP">
+      <circle cx="0" cy="-50" r="10"/>
+      <path d="M-11.5 -39 Q0 -42 11.5 -39 Q12.8 -36.5 11.5 -34 Q0 -35.6 -11.5 -34 Q-12.8 -36.5 -11.5 -39 Z"/>
+      <path d="M-6.4 -34 H6.4 C6.6 -24 8.8 -16.5 14 -10.5 H-14 C-8.8 -16.5 -6.6 -24 -6.4 -34 Z"/>
+      <path d="M-15.5 -10.5 H15.5 Q19 -9 19 -5.5 V-2.5 Q19 0 15.5 0 H-15.5 Q-19 0 -19 -2.5 V-5.5 Q-19 -9 -15.5 -10.5 Z"/>
+    </g>
+  </defs>
+</svg>
+
+<main>
+<section class="hero" id="top">
+  <svg class="stage" id="stage" aria-hidden="true">
+    <defs>
+      <radialGradient id="pool"><stop offset="0" stop-color="#FFC56E" stop-opacity=".62"/><stop offset=".5" stop-color="#FF8A2A" stop-opacity=".16"/><stop offset="1" stop-color="#FF7A1A" stop-opacity="0"/></radialGradient>
+      <radialGradient id="wallLit"><stop offset="0" stop-color="#FFB648" stop-opacity=".46"/><stop offset=".45" stop-color="#D9822E" stop-opacity=".26"/><stop offset=".8" stop-color="#C46A1E" stop-opacity=".08"/><stop offset="1" stop-color="#C46A1E" stop-opacity="0"/></radialGradient>
+      <radialGradient id="flame"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".18" stop-color="#FFE3B3"/><stop offset=".45" stop-color="#FFB648" stop-opacity=".5"/><stop offset="1" stop-color="#FF7A1A" stop-opacity="0"/></radialGradient>
+      <linearGradient id="fadeG" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-100"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity=".22"/></linearGradient>
+      <mask id="fade" maskUnits="userSpaceOnUse" x="-60" y="-120" width="120" height="130"><rect x="-60" y="-120" width="120" height="130" fill="url(#fadeG)"/></mask>
+      <filter id="blurF" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5"/></filter>
+      <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="0.5"/></filter>
+      <linearGradient id="pawnG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" id="pg0" stop-color="#F4EDE0"/><stop offset="1" id="pg1" stop-color="#6F685D"/></linearGradient>
+    </defs>
+    <circle id="wallC" fill="url(#wallLit)"/>
+    <g id="board"></g>
+    <ellipse id="poolE" fill="url(#pool)"/>
+    <g id="shadow" filter="url(#soft)"><g mask="url(#fade)" fill="#060505" fill-opacity=".92"><use href="#kingP"/></g></g>
+    <ellipse id="foot" fill="#000" opacity=".7" filter="url(#blurF)"/>
+    <g id="pawn" fill="url(#pawnG)"><use href="#pawnP"/></g>
+  </svg>
+  <div class="dark" id="dark"></div>
+  <div class="floorfade" aria-hidden="true"></div>
+  <svg class="stage" id="flameS" aria-hidden="true" style="pointer-events:none;z-index:2"><circle id="flameC" r="70" fill="url(#flame)"/></svg>
+  <h1 id="title">Lucerna</h1>
+  <div class="kick" data-t="kick">Chess engine · version 1.0</div>
+  <div class="copy">
+    <p data-t="tag">An original chess engine with a neural-network evaluation, written from scratch and trained on hundreds of millions of positions.</p>
+    <div class="links"><a href="#get" data-t="l_dl">Download 1.0</a><a href="https://github.com/lucerna-chess/lucerna" data-t="l_src">Source on GitHub</a></div>
+  </div>
+</section>
+
+<section class="game" id="game">
+  <div class="rh"><span>Lucerna 1.0</span><span class="folio">— 2 —</span><span>1. e4</span></div>
+  <div class="ops">
+    <div class="opside">
+      <h2 data-t="o_h">Openings.</h2><p class="lede" data-t="o_p">Six classical openings, played on a loop. Black's defences are shown from Black's side of the board, and the lamp follows every move.</p>
+      <div class="opnum" id="opNum">1 / 6</div>
+      <div class="opname" id="opName"></div>
+      <ol class="opmoves" id="opMoves"></ol>
+    </div>
+    <div class="gboard obd" id="ob" role="img" aria-label="Chess board"><div class="ob-in" id="obIn"></div></div>
+  </div>
+</section>
+
+<section class="ch" id="mark">
+  <div class="story">
+    <div class="head rv"><div class="rh"><span>Lucerna 1.0</span><span class="folio">— 3 —</span><span>1… e6</span></div><h2 data-t="s_h">In its light, a pawn casts the shadow of a <em>king</em>.</h2></div>
+    <figure class="rv"><div class="pic"><img src="img/white-pawn.jpg" alt="" loading="lazy" width="1100" height="1648" style="object-position:50% 45%"></div><figcaption>Photo · <a href="https://unsplash.com/photos/eNhQa8SD50A">Andrey Soldatov</a> / Unsplash</figcaption></figure>
+    <p class="lede rv" data-t="s_p">Lucerna is Latin for lamp. Every engine starts as a pawn. This one first taught itself, generation after generation, then learned from millions of games played by people and by Leela Chess Zero.</p>
+  </div>
+</section>
+
+<section class="ch" id="inside">
+  <div class="rv"><div class="rh"><span>Lucerna 1.0</span><span class="folio">— 4 —</span><span>2. e4</span></div><h2 data-t="i_h">Search and evaluation.</h2></div>
+  <figure class="band rv"><div class="pic"><img src="img/pawn-vs-army.jpg" alt="" loading="lazy" width="1800" height="1200" style="object-position:50% 55%"><svg class="tree" viewBox="0 0 210 90" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg></div><figcaption>Photo · <a href="https://unsplash.com/photos/bvKxbBnV3Ps">Edoardo Bortoli</a> / Unsplash</figcaption></figure>
+  <div class="book rv"><p data-t="i_p1"><b>Evaluation.</b> Lucerna judges a position with an efficiently updatable neural network (NNUE). 768 inputs per side feed a layer of 512 neurons, mirrored for both colours, with SCReLU activation and eight output buckets. It runs on AVX2 instructions and is updated move by move rather than recomputed.</p><p data-t="i_p2"><b>Search.</b> A principal variation search with null-move pruning, late move reductions and internal iterative reductions decides which moves deserve a deeper look. Singular extensions, with double and negative extensions and multi-cut, spend extra effort on the one move that really matters.</p><p data-t="i_p3"><b>Everything else.</b> Lazy SMP lets many threads share one transposition table. Lucerna speaks UCI, so it runs in Arena, Cute Chess, BanksiaGUI or En Croissant. Every change to the engine is kept only if it wins an SPRT match against the version before it.</p></div>
+</section>
+
+<section class="think" id="think">
+  <div class="think-track" id="thinkTrack">
+    <div class="think-stick s1" id="thinkStick">
+      <div class="think-text">
+        <div class="rh"><span>Lucerna 1.0</span><span class="folio">— 5 —</span><span>2… e5</span></div>
+        <h2 data-t="k_h">See how it thinks.</h2>
+        <div class="steps">
+          <div class="step on"><div class="num">01 / 05</div><h3 data-t="s1_t">The position</h3><p data-t="s1_d">Lucerna receives the board from your chess program, piece by piece.</p></div>
+          <div class="step"><div class="num">02 / 05</div><h3 data-t="s2_t">Bitboards</h3><p data-t="s2_d">Inside, the board becomes 12 sheets of 64 bits, one for each piece type and colour. Moves are generated with fast bit operations.</p></div>
+          <div class="step"><div class="num">03 / 05</div><h3 data-t="s3_t">Neural network</h3><p data-t="s3_d">Each piece switches on its inputs. 512 neurons per side combine them through a squared, clipped activation, and one of 8 outputs gives the score.</p></div>
+          <div class="step"><div class="num">04 / 05</div><h3 data-t="s4_t">Search</h3><p data-t="s4_d">A principal variation search looks millions of positions ahead each second. Pruning cuts lines that cannot matter, and singular extensions look deeper when one move is forced.</p></div>
+          <div class="step"><div class="num">05 / 05</div><h3 data-t="s5_t">Best move</h3><p data-t="s5_d">The move that survives the search is played. The whole journey takes a fraction of a second.</p></div>
+        </div>
+        <div class="pager"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="viz">
+        <div class="stack" id="kStack">
+          <div class="layer base" id="kBoard"></div>
+          <svg class="karrow" viewBox="0 0 8 8" preserveAspectRatio="none"><line x1="5.5" y1="5.5" x2="6.38" y2="3.74" vector-effect="non-scaling-stroke"/><polygon points="6.5,3.5 6.12,3.98 6.68,4.12"/></svg>
+          <div class="evalchip">+0.34 · Ng5</div>
+        </div>
+        <svg class="knet" id="kNet" viewBox="0 0 520 340" aria-hidden="true"></svg>
+        <svg class="ktree" id="kTree" viewBox="0 0 520 320" aria-hidden="true"></svg>
+        <div class="counter"><b id="kNps">0</b> <span data-t="nps">positions per second</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ch" id="data">
+  <div class="rv"><div class="rh"><span>Lucerna 1.0</span><span class="folio">— 6 —</span><span>2… Bb7</span></div><h2 data-t="d_h">Training data.</h2><p class="lede" data-t="d_p">The 1.0 network learned from three sources. Each square below is one sixty-fourth of the data.</p></div>
+  <div class="data">
+    <div class="dboard" id="dboard" aria-hidden="true"></div>
+    <ul class="legend">
+      <li class="rv"><i style="background:#D0913F"></i><b>125<small>M</small></b><span data-t="d1">Lucerna's own self-play, generations 7–11</span></li>
+      <li class="rv"><i style="background:#C2B193"></i><b>109<small>M</small></b><span data-t="d2">Leela Chess Zero training data (test80, ODbL)</span></li>
+      <li class="rv"><i style="background:#776C60"></i><b>13.6<small>M</small></b><span data-t="d3">Lichess Elite games, scored by Lucerna itself</span></li>
+    </ul>
+  </div>
+  <p class="note rv" data-t="d_note">All code and every network are original. No Stockfish evaluations were used.</p>
+</section>
+
+<section class="ch" id="get">
+  <div class="rv"><div class="rh"><span>Lucerna 1.0</span><span class="folio">— 7 —</span><span>3. Ne2</span></div><h2 data-t="dl_h">Download.</h2></div>
+  <div class="take">
+    <div class="rv"><div class="after"><span data-t="g_note">Windows, 64-bit. Each file is about 3.8 MB. If the first one does not start on your computer, try the next.</span><br><a href="https://lichess.org/@/LucernaBot" data-t="play">Or play it on Lichess →</a></div>
+      <div class="builds">
+        <a class="tk" data-file="x86-64-v3"><span class="arch">x86-64-v3<small data-t="rec">recommended</small></span><p data-t="g1">Modern CPUs with AVX2, from about 2013 on. The fastest build.</p><span class="go">↓</span></a>
+        <a class="tk" data-file="x86-64-v2"><span class="arch">x86-64-v2</span><p data-t="g2">Older CPUs with SSE4.2 and POPCNT.</p><span class="go">↓</span></a>
+        <a class="tk" data-file="x86-64"><span class="arch">x86-64</span><p data-t="g3">Any 64-bit CPU. The slowest, but it runs everywhere.</p><span class="go">↓</span></a>
+      </div>
+    </div>
+    <figure class="crop rv"><div class="pic"><img src="img/hand-knight.jpg" alt="" loading="lazy" width="1100" height="1467" style="object-position:55% 40%"></div><figcaption>Photo · <a href="https://unsplash.com/photos/9qnqbneo7fs">Elias Derksen</a> / Unsplash</figcaption></figure>
+  </div>
+</section>
+
+<section class="ch" id="road">
+  <div class="rv"><div class="rh"><span>Lucerna 1.0</span><span class="folio">— 8 —</span><span>3… Nf6</span></div><h2 data-t="ro_h">What's next.</h2></div>
+  <div class="next">
+    <p class="rv"><b data-t="ro1t">1.0</b><span class="when" data-t="w1">27 Oct 2026 · released</span><span data-t="ro1d">The first public release.</span><span class="sub" data-t="ro1x">An original NNUE from three data sources, singular extensions, Lazy SMP and three Windows builds.</span></p>
+    <p class="rv"><b>CCRL</b><span class="when" data-t="w2">Next</span><span data-t="ro2d">An independent rating on the Computer Chess Rating Lists.</span><span class="sub" data-t="ro2x">Submitted to the testers for the blitz and 40/15 lists; the results will appear here.</span></p>
+    <p class="rv"><b>2.0</b><span class="when" data-t="w3">Planned</span><span data-t="ro3d">Larger networks with king buckets, trained on over a billion positions.</span><span class="sub" data-t="ro3x">A king-bucketed input layer and a larger hidden layer.</span></p>
+  </div>
+</section>
+
+<section class="ch titlepage" id="thanks">
+  <div class="rv"><div class="rh"><span>Lucerna 1.0</span><span class="folio">— 9 —</span><span>4. Ng3</span></div><h2 data-t="th_h">Thanks.</h2></div>
+  <svg class="orn rv" viewBox="-24 -64 48 68" aria-hidden="true"><use href="#pawnP" fill="#FFB648"/></svg>
+  <p class="thanks rv" data-t="th_p">Lucerna 1.0 learned from the open training data of <a href="https://lczero.org/">Leela Chess Zero</a> (ODbL), and from games in the <a href="https://database.lichess.org/">Lichess</a> database (CC0) and the <a href="https://database.nikonoel.fr/">Lichess Elite</a> Database, which it scored itself. The clear code of <a href="https://github.com/mhouppin/stash-bot">Stash</a> gave us many ideas. <a href="https://github.com/cutechess/cutechess">Cute Chess</a> played every one of our test matches, and <a href="https://github.com/lichess-bot-devs/lichess-bot">lichess-bot</a> lets LucernaBot play online. Thank you.</p>
+</section>
+</main>
+
+<footer class="end" id="end">
+  <svg viewBox="0 0 560 360" aria-hidden="true">
+    <defs><linearGradient id="endPawn" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FFF4E2"/><stop offset=".55" stop-color="#C9BFAE"/><stop offset="1" stop-color="#5E574C"/></linearGradient><filter id="endBlur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter><radialGradient id="endGlow"><stop offset="0" stop-color="#FFB648" stop-opacity=".55"/><stop offset=".5" stop-color="#FFB648" stop-opacity=".12"/><stop offset="1" stop-color="#FFB648" stop-opacity="0"/></radialGradient></defs>
+    <g class="glow"><circle cx="120" cy="110" r="300" fill="url(#endGlow)"/></g>
+    <line x1="20" y1="350" x2="540" y2="350" stroke="rgba(236,230,218,.18)"/>
+    <g class="kmove"><g class="kshadow" fill="#000" fill-opacity=".85" transform="translate(320 350) skewX(-26) scale(3.2)"><use href="#kingP"/></g></g>
+    <ellipse cx="292" cy="350" rx="70" ry="11" fill="#000" opacity=".75" filter="url(#endBlur)"/><g fill="url(#endPawn)" transform="translate(275 350) scale(2.6)"><use href="#pawnP"/></g>
+  </svg>
+  <p data-t="end">The lamp dims. The pawn waits for the next game.</p>
+  <div class="foot">
+    <span><span data-t="f1">By Tessera &amp; Claude (Anthropic). Released under the MIT licence.</span> <span data-t="f3">Photos</span>: <a href="https://unsplash.com/photos/eNhQa8SD50A">Andrey Soldatov</a>, <a href="https://unsplash.com/photos/bvKxbBnV3Ps">Edoardo Bortoli</a>, <a href="https://unsplash.com/photos/9qnqbneo7fs">Elias Derksen</a>, <a href="https://unsplash.com/photos/_wMNkHdjEts">David Gabrić</a>, <a href="https://unsplash.com/photos/KKKHaEA4coc">The Cleveland Museum of Art</a>, <a href="https://unsplash.com/photos/0tgMnMIYQ9Y">thomas heintz</a>, <a href="https://unsplash.com/photos/k4Lt0CjUnb0">João Vítor Duarte</a>, <a href="https://unsplash.com/photos/HsHybQQHgWo">Anastasia Meraki</a>, <a href="https://unsplash.com/photos/pGFYxo91HUk">Julia Blumberg</a> / Unsplash.</span>
+    <a href="#top" data-t="f2">Back to top ↑</a>
+  </div>
+</footer>
+
+<script>
+document.documentElement.classList.add("js");
+const REPO = "lucerna-chess/lucerna", VERSION = "1.0";
+const T = {"en": {"n1": "Openings", "n2": "Inside", "n3": "Data", "n4": "Download", "n5": "Thanks", "kick": "Chess engine · version 1.0", "tag": "An original chess engine with a neural-network evaluation, written from scratch and trained on hundreds of millions of positions.", "l_dl": "Download 1.0", "l_src": "Source on GitHub", "g_h": "Lucerna 1.0 against Stash.", "g_p": "A game from our test match on 24 October 2026: 10 seconds per game plus 0.1 seconds per move, from a randomised opening. Lucerna has White. Scroll to play through it. The lamp follows each move; the number is Lucerna's own evaluation, in pawns.", "g_ev": "Lucerna's evaluation", "g_res": "1–0 · adjudicated after 26 moves", "g_mv": "Move", "gn0": "The opening is random and roughly level. Lucerna sees +0.1.", "gn28": "f5. White opens the king's side; the evaluation reaches +3.3.", "gn36": "Nxh6. A knight sacrifice. Lucerna already counts +6.7.", "gn40": "Rf5. Now it offers a rook: +9.4.", "gn50": "Stash's position collapses. The game is stopped at +14 for White.", "s_h": "In its light, a pawn casts the shadow of a <em>king</em>.", "s_p": "Lucerna is Latin for lamp. Every engine starts as a pawn. This one first taught itself, generation after generation, then learned from millions of games played by people and by Leela Chess Zero.", "i_h": "Search and evaluation.", "i_p1": "<b>Evaluation.</b> Lucerna judges a position with an efficiently updatable neural network (NNUE). 768 inputs per side feed a layer of 512 neurons, mirrored for both colours, with SCReLU activation and eight output buckets. It runs on AVX2 instructions and is updated move by move rather than recomputed.", "i_p2": "<b>Search.</b> A principal variation search with null-move pruning, late move reductions and internal iterative reductions decides which moves deserve a deeper look. Singular extensions, with double and negative extensions and multi-cut, spend extra effort on the one move that really matters.", "i_p3": "<b>Everything else.</b> Lazy SMP lets many threads share one transposition table. Lucerna speaks UCI, so it runs in Arena, Cute Chess, BanksiaGUI or En Croissant. Every change to the engine is kept only if it wins an SPRT match against the version before it.", "cap_r": "Rendered with our own ray-marcher", "d_h": "Training data.", "d_p": "The 1.0 network learned from three sources. Each square below is one sixty-fourth of the data.", "d1": "Lucerna's own self-play, generations 7–11", "d2": "Leela Chess Zero training data (test80, ODbL)", "d3": "Lichess Elite games, scored by Lucerna itself", "d_note": "All code and every network are original. No Stockfish evaluations were used.", "pos": "positions", "dl_h": "Download.", "rec": "recommended", "g1": "Modern CPUs with AVX2, from about 2013 on. The fastest build.", "g2": "Older CPUs with SSE4.2 and POPCNT.", "g3": "Any 64-bit CPU. The slowest, but it runs everywhere.", "g_note": "Windows, 64-bit. Each file is about 3.8 MB. If the first one does not start on your computer, try the next.", "play": "Or play it on Lichess →", "ro_h": "What's next.", "w1": "27 Oct 2026 · released", "w2": "Next", "w3": "Planned", "ro1t": "1.0", "ro1d": "The first public release.", "ro2d": "An independent rating on the Computer Chess Rating Lists.", "ro3d": "Larger networks with king buckets, trained on over a billion positions.", "ro1l": "<li>An original NNUE from three data sources</li><li>Singular extensions, Lazy SMP</li><li>Three Windows builds</li>", "ro2l": "<li>Submit to the CCRL testers</li><li>Blitz and 40/15 rating lists</li><li>Results published here</li>", "ro3l": "<li>King-bucketed input layer</li><li>Larger hidden layer</li><li>Over a billion training positions</li>", "th_h": "Thanks.", "t1": "Open training data (ODbL) that taught Lucerna 1.0 from more than a hundred million positions.", "t2": "The open game database (CC0) and the Lichess Elite Database, whose positions Lucerna scored itself.", "t3": "An open-source engine whose clear code gave us many ideas, and the opponent in the game above.", "t4": "The tool that played all of our test matches.", "t5": "The program that lets LucernaBot play online.", "end": "The lamp dims. The pawn waits for the next game.", "f1": "By Tessera &amp; Claude (Anthropic). Released under the MIT licence.", "f3": "Photos", "f4": "Renders: our own code.", "f2": "Back to top ↑", "k_h": "See how it thinks.", "nps": "positions per second", "s1_t": "The position", "s1_d": "Lucerna receives the board from your chess program, piece by piece.", "s2_t": "Bitboards", "s2_d": "Inside, the board becomes 12 sheets of 64 bits, one for each piece type and colour. Moves are generated with fast bit operations.", "s3_t": "Neural network", "s3_d": "Each piece switches on its inputs. 512 neurons per side combine them through a squared, clipped activation, and one of 8 outputs gives the score.", "s4_t": "Search", "s4_d": "A principal variation search looks millions of positions ahead each second. Pruning cuts lines that cannot matter, and singular extensions look deeper when one move is forced.", "s5_t": "Best move", "s5_d": "The move that survives the search is played. The whole journey takes a fraction of a second.", "gen": "After {mv}, Lucerna's evaluation is {ev}.", "g_start": "Move numbers count from the random starting position, not from the usual first move.", "ro1x": "An original NNUE from three data sources, singular extensions, Lazy SMP and three Windows builds.", "ro2x": "Submitted to the testers for the blitz and 40/15 lists; the results will appear here.", "ro3x": "A king-bucketed input layer and a larger hidden layer.", "th_p": "Lucerna 1.0 learned from the open training data of <a href=\"https://lczero.org/\">Leela Chess Zero</a> (ODbL), and from games in the <a href=\"https://database.lichess.org/\">Lichess</a> database (CC0) and the <a href=\"https://database.nikonoel.fr/\">Lichess Elite</a> Database, which it scored itself. The clear code of <a href=\"https://github.com/mhouppin/stash-bot\">Stash</a> gave us many ideas. <a href=\"https://github.com/cutechess/cutechess\">Cute Chess</a> played every one of our test matches, and <a href=\"https://github.com/lichess-bot-devs/lichess-bot\">lichess-bot</a> lets LucernaBot play online. Thank you.", "o_h": "Openings.", "o_p": "Six classical openings, played on a loop. Black's defences are shown from Black's side of the board, and the lamp follows every move.", "op_it": "Italian Game", "op_si": "Sicilian Najdorf", "op_qg": "Queen's Gambit Declined", "op_ruy": "Ruy Lopez", "op_kid": "King's Indian Defence", "op_fr": "French Defence"}, "zh-Hans": {"n1": "开局", "n2": "内部", "n3": "数据", "n4": "下载", "n5": "致谢", "kick": "国际象棋引擎 · 1.0 版", "tag": "一款从零写起的原创国际象棋引擎，用神经网络评估局面，经过数亿个局面训练。", "l_dl": "下载 1.0", "l_src": "GitHub 源代码", "g_h": "Lucerna 1.0 对 Stash。", "g_p": "这是 2026 年 10 月 24 日测试赛中的一盘棋：每盘 10 秒，每步加 0.1 秒，开局随机。Lucerna 执白。往下滚动就能逐步播放：灯光跟着每一步移动，数字是 Lucerna 自己对局面的评估（以兵为单位）。", "g_ev": "Lucerna 的评估", "g_res": "1–0 · 第 26 步后判定白胜", "g_mv": "步", "gn0": "开局是随机的，双方大致均势。Lucerna 评估 +0.1。", "gn28": "f5。白方打开王翼，评估升到 +3.3。", "gn36": "Nxh6。弃马！Lucerna 已经算出 +6.7。", "gn40": "Rf5。接着又送出一只车：+9.4。", "gn50": "Stash 的阵地崩溃。对局在白方 +14 时被判定结束。", "s_h": "<span class=\"nw\">在它的灯光下，</span><span class=\"nw\">小兵</span>投出了<em class=\"nw\">国王</em>的<span class=\"nw\">影子。</span>", "s_p": "Lucerna 是拉丁语的“灯”。每个引擎都从一个小兵开始。这一个先靠自己一代一代学习，再从人类棋手和 Leela Chess Zero 的数百万盘对局中继续成长。", "i_h": "搜索与评估", "i_p1": "<b>评估。</b>Lucerna 用一种可以高效增量更新的神经网络（NNUE）来判断局面：每一方 768 个输入，连到 512 个神经元，黑白两方对称；激活函数是 SCReLU，输出层分 8 组。它用 AVX2 指令运行，每走一步只更新变化的部分，而不是重新计算。", "i_p2": "<b>搜索。</b>主变搜索（PVS）配合空着裁剪、后期着法缩减和内部迭代缩减，决定哪些着法值得看得更深。奇异延伸（包括双重延伸、负延伸和多重截断）会把额外的力气花在那一步真正关键的棋上。", "i_p3": "<b>其他。</b>Lazy SMP 让多个线程共享同一张置换表。Lucerna 使用 UCI 协议，可以在 Arena、Cute Chess、BanksiaGUI 或 En Croissant 中运行。引擎的每一处改动，都必须在 SPRT 对局测试中赢过上一个版本才会保留。", "cap_r": "用我们自己写的光线步进渲染器渲染", "d_h": "训练数据", "d_p": "1.0 版的网络从三个来源学习。下面棋盘的每一格，大约代表全部数据的六十四分之一。", "d1": "Lucerna 自我对弈，第 7–11 代", "d2": "Leela Chess Zero 公开训练数据（test80，ODbL 许可）", "d3": "Lichess 精英对局，由 Lucerna 自己打分", "d_note": "所有代码和每一个神经网络都是原创的，没有使用任何 Stockfish 的评估。", "pos": "个局面", "dl_h": "下载", "rec": "推荐", "g1": "支持 AVX2 的较新 CPU（约 2013 年以后）。最快的版本。", "g2": "支持 SSE4.2 和 POPCNT 的较旧 CPU。", "g3": "任何 64 位 CPU。最慢，但哪里都能运行。", "g_note": "适用于 64 位 Windows，每个文件约 3.8 MB。如果第一个在你的电脑上打不开，就试下一个。", "play": "或者在 Lichess 上和它下一盘 →", "ro_h": "接下来", "w1": "2026 年 10 月 27 日 · 已发布", "w2": "下一步", "w3": "计划中", "ro1t": "1.0", "ro1d": "第一个公开版本。", "ro2d": "在 CCRL 计算机国际象棋等级分榜上获得独立评分。", "ro3d": "带王位置分组的更大网络，用十亿以上的局面训练。", "ro1l": "<li>原创 NNUE，来自三个数据来源</li><li>奇异延伸、Lazy SMP 多线程</li><li>三个 Windows 版本</li>", "ro2l": "<li>提交给 CCRL 测试者</li><li>参加快棋和 40/15 等级分榜</li><li>结果会公布在这里</li>", "ro3l": "<li>按王位置分组的输入层</li><li>更大的隐藏层</li><li>十亿以上的训练局面</li>", "th_h": "致谢", "t1": "公开的训练数据（ODbL 许可），让 Lucerna 1.0 从一亿多个局面中学习。", "t2": "公开的对局数据库（CC0），以及 Lichess 精英数据库，其中的局面由 Lucerna 自己打分。", "t3": "一款开源引擎，我们从它清晰的代码中学到许多思路；它也是上面那盘棋的对手。", "t4": "运行我们所有测试对局的工具。", "t5": "让 LucernaBot 能在线下棋的程序。", "end": "灯渐渐暗下。小兵在等下一盘棋。", "f1": "由 Tessera 与 Claude (Anthropic) 制作，以 MIT 许可证发布。", "f3": "照片", "f4": "渲染图：我们自己的代码。", "f2": "回到顶部 ↑", "k_h": "看它怎么思考", "nps": "个局面 / 秒", "s1_t": "局面", "s1_d": "Lucerna 从象棋软件那里逐个接收棋盘上的棋子。", "s2_t": "位棋盘", "s2_d": "在引擎内部，棋盘变成 12 张 64 位的“纸片”，每张对应一种棋子和颜色。走法用快速的位运算生成。", "s3_t": "神经网络", "s3_d": "每个棋子点亮对应的输入。每方 512 个神经元用“平方截断”激活把它们组合起来，再从 8 个输出中选一个给出评分。", "s4_t": "搜索", "s4_d": "主要变例搜索每秒向前推演数百万个局面。剪枝砍掉无关紧要的变化，遇到只有一步好棋的局面时，奇异延伸会算得更深。", "s5_t": "最佳着法", "s5_d": "经过搜索留下来的走法就是它要下的棋。整个过程只需几分之一秒。", "gen": "走完 {mv} 后，Lucerna 的评估是 {ev}。", "g_start": "着法编号从随机的起始局面开始计算，而不是从常规的第一步算起。", "ro1x": "原创 NNUE、来自三个数据来源，奇异延伸、Lazy SMP 多线程，三个 Windows 版本。", "ro2x": "提交给测试者，参加快棋和 40/15 两个榜单；结果会公布在这里。", "ro3x": "按王位置分组的输入层，以及更大的隐藏层。", "th_p": "Lucerna 1.0 学习了 <a href=\"https://lczero.org/\">Leela Chess Zero</a> 公开的训练数据（ODbL 许可），以及 <a href=\"https://database.lichess.org/\">Lichess</a> 数据库（CC0）和 <a href=\"https://database.nikonoel.fr/\">Lichess Elite</a> 数据库中的对局，这些局面由它自己打分。<a href=\"https://github.com/mhouppin/stash-bot\">Stash</a> 清晰的代码给了我们许多思路。<a href=\"https://github.com/cutechess/cutechess\">Cute Chess</a> 运行了我们所有的测试对局，<a href=\"https://github.com/lichess-bot-devs/lichess-bot\">lichess-bot</a> 让 LucernaBot 能在线下棋。谢谢你们。", "o_h": "开局", "o_p": "六个经典开局，循环播放。黑方的防御从黑方的角度展示，灯光跟着每一步棋移动。", "op_it": "意大利开局", "op_si": "西西里 · 纳伊道夫", "op_qg": "后翼弃兵拒绝", "op_ruy": "西班牙开局", "op_kid": "古印度防御", "op_fr": "法兰西防御"}, "zh-Hant": {"n1": "開局", "n2": "內部", "n3": "資料", "n4": "下載", "n5": "致謝", "kick": "西洋棋引擎 · 1.0 版", "tag": "一款從零寫起的原創西洋棋引擎，用神經網路評估局面，經過數億個局面訓練。", "l_dl": "下載 1.0", "l_src": "GitHub 原始碼", "g_h": "Lucerna 1.0 對 Stash。", "g_p": "這是 2026 年 10 月 24 日測試賽中的一盤棋：每盤 10 秒，每步加 0.1 秒，開局隨機。Lucerna 執白。往下捲動就能逐步播放：燈光跟著每一步移動，數字是 Lucerna 自己對局面的評估（以兵為單位）。", "g_ev": "Lucerna 的評估", "g_res": "1–0 · 第 26 步後判定白勝", "g_mv": "步", "gn0": "開局是隨機的，雙方大致均勢。Lucerna 評估 +0.1。", "gn28": "f5。白方打開王翼，評估升到 +3.3。", "gn36": "Nxh6。棄馬！Lucerna 已經算出 +6.7。", "gn40": "Rf5。接著又送出一隻車：+9.4。", "gn50": "Stash 的陣地崩潰。對局在白方 +14 時被判定結束。", "s_h": "<span class=\"nw\">在它的燈光下，</span><span class=\"nw\">小兵</span>投出了<em class=\"nw\">國王</em>的<span class=\"nw\">影子。</span>", "s_p": "Lucerna 是拉丁語的「燈」。每個引擎都從一個小兵開始。這一個先靠自己一代一代學習，再從人類棋手和 Leela Chess Zero 的數百萬盤對局中繼續成長。", "i_h": "搜尋與評估", "i_p1": "<b>評估。</b>Lucerna 用一種可以高效增量更新的神經網路（NNUE）來判斷局面：每一方 768 個輸入，連到 512 個神經元，黑白兩方對稱；激活函數是 SCReLU，輸出層分 8 組。它用 AVX2 指令執行，每走一步只更新變化的部分，而不是重新計算。", "i_p2": "<b>搜尋。</b>主變搜尋（PVS）配合空著裁剪、後期著法縮減和內部迭代縮減，決定哪些著法值得看得更深。奇異延伸（包括雙重延伸、負延伸和多重截斷）會把額外的力氣花在那一步真正關鍵的棋上。", "i_p3": "<b>其他。</b>Lazy SMP 讓多個執行緒共用同一張置換表。Lucerna 使用 UCI 協定，可以在 Arena、Cute Chess、BanksiaGUI 或 En Croissant 中執行。引擎的每一處改動，都必須在 SPRT 對局測試中贏過上一個版本才會保留。", "cap_r": "用我們自己寫的光線步進渲染器渲染", "d_h": "訓練資料", "d_p": "1.0 版的網路從三個來源學習。下面棋盤的每一格，大約代表全部資料的六十四分之一。", "d1": "Lucerna 自我對弈，第 7–11 代", "d2": "Leela Chess Zero 公開訓練資料（test80，ODbL 授權）", "d3": "Lichess 精英對局，由 Lucerna 自己打分", "d_note": "所有程式碼和每一個神經網路都是原創的，沒有使用任何 Stockfish 的評估。", "pos": "個局面", "dl_h": "下載", "rec": "推薦", "g1": "支援 AVX2 的較新 CPU（約 2013 年以後）。最快的版本。", "g2": "支援 SSE4.2 和 POPCNT 的較舊 CPU。", "g3": "任何 64 位元 CPU。最慢，但哪裡都能執行。", "g_note": "適用於 64 位元 Windows，每個檔案約 3.8 MB。如果第一個在你的電腦上打不開，就試下一個。", "play": "或者在 Lichess 上和它下一盤 →", "ro_h": "接下來", "w1": "2026 年 10 月 27 日 · 已發布", "w2": "下一步", "w3": "計劃中", "ro1t": "1.0", "ro1d": "第一個公開版本。", "ro2d": "在 CCRL 電腦西洋棋等級分榜上獲得獨立評分。", "ro3d": "帶王位置分組的更大網路，用十億以上的局面訓練。", "ro1l": "<li>原創 NNUE，來自三個資料來源</li><li>奇異延伸、Lazy SMP 多執行緒</li><li>三個 Windows 版本</li>", "ro2l": "<li>提交給 CCRL 測試者</li><li>參加快棋和 40/15 等級分榜</li><li>結果會公布在這裡</li>", "ro3l": "<li>按王位置分組的輸入層</li><li>更大的隱藏層</li><li>十億以上的訓練局面</li>", "th_h": "致謝", "t1": "公開的訓練資料（ODbL 授權），讓 Lucerna 1.0 從一億多個局面中學習。", "t2": "公開的對局資料庫（CC0），以及 Lichess 精英資料庫，其中的局面由 Lucerna 自己打分。", "t3": "一款開源引擎，我們從它清晰的程式碼中學到許多思路；它也是上面那盤棋的對手。", "t4": "執行我們所有測試對局的工具。", "t5": "讓 LucernaBot 能在線下棋的程式。", "end": "燈漸漸暗下。小兵在等下一盤棋。", "f1": "由 Tessera 與 Claude (Anthropic) 製作，以 MIT 授權條款發布。", "f3": "照片", "f4": "渲染圖：我們自己的程式碼。", "f2": "回到頂部 ↑", "k_h": "看它怎麼思考", "nps": "個局面 / 秒", "s1_t": "局面", "s1_d": "Lucerna 從棋類軟體那裡逐個接收棋盤上的棋子。", "s2_t": "位元棋盤", "s2_d": "在引擎內部，棋盤變成 12 張 64 位元的「紙片」，每張對應一種棋子和顏色。著法用快速的位元運算產生。", "s3_t": "神經網路", "s3_d": "每個棋子點亮對應的輸入。每方 512 個神經元用「平方截斷」激活把它們組合起來，再從 8 個輸出中選一個給出評分。", "s4_t": "搜尋", "s4_d": "主要變例搜尋每秒向前推演數百萬個局面。剪枝砍掉無關緊要的變化，遇到只有一步好棋的局面時，奇異延伸會算得更深。", "s5_t": "最佳著法", "s5_d": "經過搜尋留下來的著法就是它要下的棋。整個過程只需幾分之一秒。", "gen": "走完 {mv} 後，Lucerna 的評估是 {ev}。", "g_start": "著法編號從隨機的起始局面開始計算，而不是從常規的第一步算起。", "ro1x": "原創 NNUE、來自三個資料來源，奇異延伸、Lazy SMP 多執行緒，三個 Windows 版本。", "ro2x": "提交給測試者，參加快棋和 40/15 兩個榜單；結果會公布在這裡。", "ro3x": "按王位置分組的輸入層，以及更大的隱藏層。", "th_p": "Lucerna 1.0 學習了 <a href=\"https://lczero.org/\">Leela Chess Zero</a> 公開的訓練資料（ODbL 授權），以及 <a href=\"https://database.lichess.org/\">Lichess</a> 資料庫（CC0）和 <a href=\"https://database.nikonoel.fr/\">Lichess Elite</a> 資料庫中的對局，這些局面由它自己打分。<a href=\"https://github.com/mhouppin/stash-bot\">Stash</a> 清晰的程式碼給了我們許多思路。<a href=\"https://github.com/cutechess/cutechess\">Cute Chess</a> 執行了我們所有的測試對局，<a href=\"https://github.com/lichess-bot-devs/lichess-bot\">lichess-bot</a> 讓 LucernaBot 能在線下棋。謝謝你們。", "o_h": "開局", "o_p": "六個經典開局，循環播放。黑方的防禦從黑方的角度展示，燈光跟著每一步棋移動。", "op_it": "義大利開局", "op_si": "西西里 · 納道夫", "op_qg": "后翼棄兵拒絕", "op_ruy": "西班牙開局", "op_kid": "古印度防禦", "op_fr": "法蘭西防禦"}, "ms": {"n1": "Pembukaan", "n2": "Dalaman", "n3": "Data", "n4": "Muat turun", "n5": "Terima kasih", "kick": "Enjin catur · versi 1.0", "tag": "Enjin catur asli dengan penilaian rangkaian neural, ditulis dari awal dan dilatih dengan ratusan juta kedudukan.", "l_dl": "Muat turun 1.0", "l_src": "Kod sumber di GitHub", "g_h": "Lucerna 1.0 menentang Stash.", "g_p": "Satu permainan daripada perlawanan ujian kami pada 24 Oktober 2026: 10 saat setiap permainan ditambah 0.1 saat setiap langkah, daripada pembukaan rawak. Lucerna bermain Putih. Tatal untuk memainkannya. Lampu mengikut setiap langkah; nombor itu ialah penilaian Lucerna sendiri, dalam unit bidak.", "g_ev": "Penilaian Lucerna", "g_res": "1–0 · diputuskan selepas 26 langkah", "g_mv": "Langkah", "gn0": "Pembukaan adalah rawak dan hampir seimbang. Lucerna melihat +0.1.", "gn28": "f5. Putih membuka sayap raja; penilaian mencapai +3.3.", "gn36": "Nxh6. Pengorbanan kuda. Lucerna sudah mengira +6.7.", "gn40": "Rf5. Kini ia menawarkan tir: +9.4.", "gn50": "Kedudukan Stash runtuh. Permainan dihentikan pada +14 untuk Putih.", "s_h": "Dalam cahayanya, bidak memancarkan bayang-bayang seorang <em>raja</em>.", "s_p": "Lucerna bermaksud lampu dalam bahasa Latin. Setiap enjin bermula sebagai bidak. Enjin ini mula-mula belajar sendiri, generasi demi generasi, kemudian daripada berjuta-juta permainan manusia dan Leela Chess Zero.", "i_h": "Carian dan penilaian.", "i_p1": "<b>Penilaian.</b> Lucerna menilai kedudukan dengan rangkaian neural yang boleh dikemas kini dengan cekap (NNUE). 768 input bagi setiap pihak menyuap lapisan 512 neuron, dicerminkan untuk kedua-dua warna, dengan pengaktifan SCReLU dan lapan baldi output. Ia berjalan dengan arahan AVX2 dan dikemas kini langkah demi langkah, bukan dikira semula.", "i_p2": "<b>Carian.</b> Carian variasi utama dengan pemangkasan langkah kosong, pengurangan langkah lewat dan pengurangan lelaran dalaman menentukan langkah mana yang patut dilihat lebih dalam. Lanjutan tunggal, termasuk lanjutan berganda, lanjutan negatif dan multi-cut, menumpukan usaha pada satu langkah yang benar-benar penting.", "i_p3": "<b>Yang lain.</b> Lazy SMP membolehkan banyak bebenang berkongsi satu jadual transposisi. Lucerna menggunakan UCI, jadi ia berjalan dalam Arena, Cute Chess, BanksiaGUI atau En Croissant. Setiap perubahan hanya dikekalkan jika ia menang dalam perlawanan SPRT menentang versi sebelumnya.", "cap_r": "Dirender dengan ray-marcher kami sendiri", "d_h": "Data latihan.", "d_p": "Rangkaian 1.0 belajar daripada tiga sumber. Setiap petak di bawah ialah satu per enam puluh empat daripada data.", "d1": "Permainan sendiri Lucerna, generasi 7–11", "d2": "Data latihan Leela Chess Zero (test80, ODbL)", "d3": "Permainan Lichess Elite, dinilai sendiri oleh Lucerna", "d_note": "Semua kod dan setiap rangkaian adalah asli. Tiada penilaian Stockfish digunakan.", "pos": "kedudukan", "dl_h": "Muat turun.", "rec": "disyorkan", "g1": "CPU moden dengan AVX2, sejak kira-kira 2013. Binaan paling pantas.", "g2": "CPU lama dengan SSE4.2 dan POPCNT.", "g3": "Mana-mana CPU 64-bit. Paling perlahan, tetapi berjalan di mana-mana.", "g_note": "Windows 64-bit. Setiap fail kira-kira 3.8 MB. Jika yang pertama tidak berjalan pada komputer anda, cuba yang seterusnya.", "play": "Atau bermain dengannya di Lichess →", "ro_h": "Seterusnya.", "w1": "27 Okt 2026 · dikeluarkan", "w2": "Seterusnya", "w3": "Dirancang", "ro1t": "1.0", "ro1d": "Keluaran awam pertama.", "ro2d": "Penarafan bebas dalam Computer Chess Rating Lists.", "ro3d": "Rangkaian lebih besar dengan baldi raja, dilatih dengan lebih sebilion kedudukan.", "ro1l": "<li>NNUE asli daripada tiga sumber data</li><li>Lanjutan tunggal, Lazy SMP</li><li>Tiga binaan Windows</li>", "ro2l": "<li>Dihantar kepada penguji CCRL</li><li>Senarai penarafan blitz dan 40/15</li><li>Keputusan diterbitkan di sini</li>", "ro3l": "<li>Lapisan input dengan baldi raja</li><li>Lapisan tersembunyi lebih besar</li><li>Lebih sebilion kedudukan latihan</li>", "th_h": "Terima kasih.", "t1": "Data latihan terbuka (ODbL) yang mengajar Lucerna 1.0 daripada lebih seratus juta kedudukan.", "t2": "Pangkalan data permainan terbuka (CC0) dan Lichess Elite Database, yang kedudukannya dinilai sendiri oleh Lucerna.", "t3": "Enjin sumber terbuka yang kodnya yang jelas memberi kami banyak idea, dan lawan dalam permainan di atas.", "t4": "Alat yang menjalankan semua perlawanan ujian kami.", "t5": "Program yang membolehkan LucernaBot bermain dalam talian.", "end": "Lampu semakin malap. Bidak menunggu permainan seterusnya.", "f1": "Oleh Tessera &amp; Claude (Anthropic). Dikeluarkan di bawah lesen MIT.", "f3": "Foto", "f4": "Render: kod kami sendiri.", "f2": "Kembali ke atas ↑", "k_h": "Lihat cara ia berfikir.", "nps": "kedudukan sesaat", "s1_t": "Kedudukan", "s1_d": "Lucerna menerima papan daripada program catur anda, buah demi buah.", "s2_t": "Bitboard", "s2_d": "Di dalam, papan menjadi 12 helaian 64 bit, satu untuk setiap jenis buah dan warna. Langkah dijana dengan operasi bit yang pantas.", "s3_t": "Rangkaian neural", "s3_d": "Setiap buah menghidupkan inputnya. 512 neuron bagi setiap pihak menggabungkannya melalui pengaktifan kuasa dua terpotong, dan satu daripada 8 output memberi skor.", "s4_t": "Carian", "s4_d": "Carian variasi utama melihat berjuta-juta kedudukan ke hadapan setiap saat. Pemangkasan membuang variasi yang tidak penting, dan lanjutan tunggal mengira lebih dalam apabila hanya satu langkah yang baik.", "s5_t": "Langkah terbaik", "s5_d": "Langkah yang bertahan dalam carian akan dimainkan. Seluruh proses mengambil masa sepecah saat.", "gen": "Selepas {mv}, penilaian Lucerna ialah {ev}.", "g_start": "Nombor langkah dikira dari kedudukan permulaan rawak, bukan dari langkah pertama biasa.", "ro1x": "NNUE asli daripada tiga sumber data, lanjutan tunggal, Lazy SMP dan tiga binaan Windows.", "ro2x": "Dihantar kepada penguji untuk senarai blitz dan 40/15; keputusannya akan dipaparkan di sini.", "ro3x": "Lapisan input dengan baldi raja dan lapisan tersembunyi yang lebih besar.", "th_p": "Lucerna 1.0 belajar daripada data latihan terbuka <a href=\"https://lczero.org/\">Leela Chess Zero</a> (ODbL), serta permainan dalam pangkalan data <a href=\"https://database.lichess.org/\">Lichess</a> (CC0) dan <a href=\"https://database.nikonoel.fr/\">Lichess Elite</a> Database, yang dinilainya sendiri. Kod <a href=\"https://github.com/mhouppin/stash-bot\">Stash</a> yang jelas memberi kami banyak idea. <a href=\"https://github.com/cutechess/cutechess\">Cute Chess</a> menjalankan setiap perlawanan ujian kami, dan <a href=\"https://github.com/lichess-bot-devs/lichess-bot\">lichess-bot</a> membolehkan LucernaBot bermain dalam talian. Terima kasih.", "o_h": "Pembukaan.", "o_p": "Enam pembukaan klasik, dimainkan berulang-ulang. Pertahanan Hitam ditunjukkan dari sisi Hitam, dan lampu mengikut setiap langkah.", "op_it": "Italian Game", "op_si": "Sicilian Najdorf", "op_qg": "Queen's Gambit Declined", "op_ruy": "Ruy Lopez", "op_kid": "King's Indian Defence", "op_fr": "French Defence"}, "es": {"n1": "Aperturas", "n2": "Dentro", "n3": "Datos", "n4": "Descargar", "n5": "Gracias", "kick": "Motor de ajedrez · versión 1.0", "tag": "Un motor de ajedrez original con evaluación por red neuronal, escrito desde cero y entrenado con cientos de millones de posiciones.", "l_dl": "Descargar 1.0", "l_src": "Código en GitHub", "g_h": "Lucerna 1.0 contra Stash.", "g_p": "Una partida de nuestro match de prueba del 24 de octubre de 2026: 10 segundos por partida más 0,1 segundos por jugada, desde una apertura aleatoria. Lucerna lleva las blancas. Desplázate para reproducirla. La lámpara sigue cada jugada; el número es la evaluación del propio Lucerna, en peones.", "g_ev": "Evaluación de Lucerna", "g_res": "1–0 · adjudicada tras 26 jugadas", "g_mv": "Jugada", "gn0": "La apertura es aleatoria y más o menos igualada. Lucerna ve +0,1.", "gn28": "f5. Las blancas abren el flanco de rey; la evaluación llega a +3,3.", "gn36": "Nxh6. Un sacrificio de caballo. Lucerna ya cuenta +6,7.", "gn40": "Rf5. Ahora ofrece una torre: +9,4.", "gn50": "La posición de Stash se derrumba. La partida se detiene con +14 para las blancas.", "s_h": "Bajo su luz, un peón proyecta la sombra de un <em>rey</em>.", "s_p": "Lucerna significa lámpara en latín. Todo motor empieza siendo un peón. Este aprendió primero solo, generación tras generación, y luego de millones de partidas humanas y de Leela Chess Zero.", "i_h": "Búsqueda y evaluación.", "i_p1": "<b>Evaluación.</b> Lucerna juzga una posición con una red neuronal eficientemente actualizable (NNUE). 768 entradas por bando alimentan una capa de 512 neuronas, reflejada para ambos colores, con activación SCReLU y ocho buckets de salida. Funciona con instrucciones AVX2 y se actualiza jugada a jugada en lugar de recalcularse.", "i_p2": "<b>Búsqueda.</b> Una búsqueda de variante principal con poda de movimiento nulo, reducciones de jugadas tardías y reducciones iterativas internas decide qué jugadas merecen una mirada más profunda. Las extensiones singulares, con extensiones dobles y negativas y multi-cut, dedican esfuerzo extra a la jugada que de verdad importa.", "i_p3": "<b>Todo lo demás.</b> Lazy SMP permite que muchos hilos compartan una tabla de transposición. Lucerna habla UCI, así que funciona en Arena, Cute Chess, BanksiaGUI o En Croissant. Cada cambio solo se conserva si gana un match SPRT contra la versión anterior.", "cap_r": "Renderizado con nuestro propio ray-marcher", "d_h": "Datos de entrenamiento.", "d_p": "La red 1.0 aprendió de tres fuentes. Cada casilla de abajo es una sesentaicuatroava parte de los datos.", "d1": "Partidas de Lucerna contra sí mismo, generaciones 7–11", "d2": "Datos de entrenamiento de Leela Chess Zero (test80, ODbL)", "d3": "Partidas de Lichess Elite, puntuadas por el propio Lucerna", "d_note": "Todo el código y todas las redes son originales. No se usó ninguna evaluación de Stockfish.", "pos": "posiciones", "dl_h": "Descargar.", "rec": "recomendado", "g1": "CPU modernas con AVX2, desde 2013 aproximadamente. La versión más rápida.", "g2": "CPU más antiguas con SSE4.2 y POPCNT.", "g3": "Cualquier CPU de 64 bits. La más lenta, pero funciona en todas partes.", "g_note": "Windows de 64 bits. Cada archivo pesa unos 3,8 MB. Si el primero no arranca en tu ordenador, prueba el siguiente.", "play": "O juega contra él en Lichess →", "ro_h": "Lo que viene.", "w1": "27 oct 2026 · publicado", "w2": "Siguiente", "w3": "Previsto", "ro1t": "1.0", "ro1d": "La primera versión pública.", "ro2d": "Una valoración independiente en las Computer Chess Rating Lists.", "ro3d": "Redes más grandes con buckets de rey, entrenadas con más de mil millones de posiciones.", "ro1l": "<li>NNUE original con tres fuentes de datos</li><li>Extensiones singulares, Lazy SMP</li><li>Tres compilaciones para Windows</li>", "ro2l": "<li>Envío a los probadores de CCRL</li><li>Listas blitz y 40/15</li><li>Resultados publicados aquí</li>", "ro3l": "<li>Capa de entrada con buckets de rey</li><li>Capa oculta más grande</li><li>Más de mil millones de posiciones</li>", "th_h": "Gracias.", "t1": "Datos de entrenamiento abiertos (ODbL) con los que Lucerna 1.0 aprendió de más de cien millones de posiciones.", "t2": "La base de datos abierta de partidas (CC0) y la Lichess Elite Database, cuyas posiciones puntuó el propio Lucerna.", "t3": "Un motor de código abierto cuyo código claro nos dio muchas ideas, y el rival de la partida de arriba.", "t4": "La herramienta que jugó todas nuestras partidas de prueba.", "t5": "El programa que permite a LucernaBot jugar en línea.", "end": "La lámpara se apaga poco a poco. El peón espera la próxima partida.", "f1": "Por Tessera y Claude (Anthropic). Publicado bajo la licencia MIT.", "f3": "Fotos", "f4": "Renders: nuestro propio código.", "f2": "Volver arriba ↑", "k_h": "Mira cómo piensa.", "nps": "posiciones por segundo", "s1_t": "La posición", "s1_d": "Lucerna recibe el tablero de tu programa de ajedrez, pieza a pieza.", "s2_t": "Bitboards", "s2_d": "Por dentro, el tablero se convierte en 12 hojas de 64 bits, una por tipo y color de pieza. Las jugadas se generan con operaciones de bits muy rápidas.", "s3_t": "Red neuronal", "s3_d": "Cada pieza activa sus entradas. 512 neuronas por bando las combinan con una activación cuadrática recortada, y una de 8 salidas da la puntuación.", "s4_t": "Búsqueda", "s4_d": "Una búsqueda de variante principal explora millones de posiciones por segundo. La poda corta las líneas que no importan y las extensiones singulares profundizan cuando solo hay una jugada buena.", "s5_t": "Mejor jugada", "s5_d": "La jugada que sobrevive a la búsqueda es la que se juega. Todo ocurre en una fracción de segundo.", "gen": "Tras {mv}, la evaluación de Lucerna es {ev}.", "g_start": "La numeración cuenta desde la posición inicial aleatoria, no desde la primera jugada habitual.", "ro1x": "Una NNUE original con tres fuentes de datos, extensiones singulares, Lazy SMP y tres compilaciones para Windows.", "ro2x": "Enviado a los probadores para las listas blitz y 40/15; los resultados aparecerán aquí.", "ro3x": "Una capa de entrada con buckets de rey y una capa oculta más grande.", "th_p": "Lucerna 1.0 aprendió de los datos de entrenamiento abiertos de <a href=\"https://lczero.org/\">Leela Chess Zero</a> (ODbL) y de partidas de la base de datos de <a href=\"https://database.lichess.org/\">Lichess</a> (CC0) y de la <a href=\"https://database.nikonoel.fr/\">Lichess Elite</a> Database, que puntuó él mismo. El código claro de <a href=\"https://github.com/mhouppin/stash-bot\">Stash</a> nos dio muchas ideas. <a href=\"https://github.com/cutechess/cutechess\">Cute Chess</a> jugó todas nuestras partidas de prueba y <a href=\"https://github.com/lichess-bot-devs/lichess-bot\">lichess-bot</a> permite a LucernaBot jugar en línea. Gracias.", "o_h": "Aperturas.", "o_p": "Seis aperturas clásicas, en bucle. Las defensas de las negras se muestran desde su lado del tablero, y la lámpara sigue cada jugada.", "op_it": "Apertura Italiana", "op_si": "Siciliana Najdorf", "op_qg": "Gambito de Dama Rehusado", "op_ruy": "Apertura Española", "op_kid": "Defensa India de Rey", "op_fr": "Defensa Francesa"}, "de": {"n1": "Eröffnungen", "n2": "Innen", "n3": "Daten", "n4": "Download", "n5": "Dank", "kick": "Schach-Engine · Version 1.0", "tag": "Eine originale Schach-Engine mit neuronaler Bewertung, von Grund auf geschrieben und mit Hunderten Millionen Stellungen trainiert.", "l_dl": "1.0 herunterladen", "l_src": "Quellcode auf GitHub", "g_h": "Lucerna 1.0 gegen Stash.", "g_p": "Eine Partie aus unserem Testmatch vom 24. Oktober 2026: 10 Sekunden pro Partie plus 0,1 Sekunden pro Zug, aus einer zufälligen Eröffnung. Lucerna spielt Weiß. Scrolle, um sie nachzuspielen. Die Lampe folgt jedem Zug; die Zahl ist Lucernas eigene Bewertung in Bauerneinheiten.", "g_ev": "Lucernas Bewertung", "g_res": "1–0 · nach 26 Zügen abgeschätzt", "g_mv": "Zug", "gn0": "Die Eröffnung ist zufällig und etwa ausgeglichen. Lucerna sieht +0,1.", "gn28": "f5. Weiß öffnet den Königsflügel; die Bewertung erreicht +3,3.", "gn36": "Sxh6. Ein Springeropfer. Lucerna rechnet schon mit +6,7.", "gn40": "Tf5. Jetzt bietet sie einen Turm an: +9,4.", "gn50": "Stashs Stellung bricht zusammen. Die Partie endet bei +14 für Weiß.", "s_h": "In ihrem Licht wirft ein Bauer den Schatten eines <em>Königs</em>.", "s_p": "Lucerna ist Latein für Lampe. Jede Engine beginnt als Bauer. Diese lernte zuerst allein, Generation um Generation, dann aus Millionen Partien von Menschen und von Leela Chess Zero.", "i_h": "Suche und Bewertung.", "i_p1": "<b>Bewertung.</b> Lucerna beurteilt eine Stellung mit einem effizient aktualisierbaren neuronalen Netz (NNUE). 768 Eingaben pro Seite speisen eine Schicht aus 512 Neuronen, gespiegelt für beide Farben, mit SCReLU-Aktivierung und acht Ausgabe-Buckets. Es läuft mit AVX2-Befehlen und wird Zug um Zug aktualisiert statt neu berechnet.", "i_p2": "<b>Suche.</b> Eine Hauptvariantensuche mit Nullzug-Pruning, Late Move Reductions und internen iterativen Reduktionen entscheidet, welche Züge einen tieferen Blick verdienen. Singuläre Erweiterungen, mit doppelten und negativen Erweiterungen und Multi-Cut, stecken zusätzliche Mühe in den einen Zug, auf den es ankommt.", "i_p3": "<b>Alles andere.</b> Lazy SMP lässt viele Threads eine Transpositionstabelle teilen. Lucerna spricht UCI und läuft daher in Arena, Cute Chess, BanksiaGUI oder En Croissant. Jede Änderung bleibt nur, wenn sie ein SPRT-Match gegen die Vorgängerversion gewinnt.", "cap_r": "Gerendert mit unserem eigenen Ray-Marcher", "d_h": "Trainingsdaten.", "d_p": "Das 1.0-Netz lernte aus drei Quellen. Jedes Feld unten ist ein Vierundsechzigstel der Daten.", "d1": "Lucernas Selbstspiel, Generationen 7–11", "d2": "Trainingsdaten von Leela Chess Zero (test80, ODbL)", "d3": "Lichess-Elite-Partien, von Lucerna selbst bewertet", "d_note": "Der gesamte Code und jedes Netz sind original. Es wurden keine Stockfish-Bewertungen verwendet.", "pos": "Stellungen", "dl_h": "Download.", "rec": "empfohlen", "g1": "Moderne CPUs mit AVX2, etwa ab 2013. Der schnellste Build.", "g2": "Ältere CPUs mit SSE4.2 und POPCNT.", "g3": "Jede 64-Bit-CPU. Am langsamsten, läuft aber überall.", "g_note": "Windows, 64 Bit. Jede Datei ist etwa 3,8 MB groß. Startet die erste auf deinem Rechner nicht, nimm die nächste.", "play": "Oder spiele auf Lichess gegen sie →", "ro_h": "Wie es weitergeht.", "w1": "27. Okt. 2026 · veröffentlicht", "w2": "Als Nächstes", "w3": "Geplant", "ro1t": "1.0", "ro1d": "Die erste öffentliche Version.", "ro2d": "Eine unabhängige Wertung in den Computer Chess Rating Lists.", "ro3d": "Größere Netze mit Königs-Buckets, trainiert mit über einer Milliarde Stellungen.", "ro1l": "<li>Originales NNUE aus drei Datenquellen</li><li>Singuläre Erweiterungen, Lazy SMP</li><li>Drei Windows-Builds</li>", "ro2l": "<li>Einreichung bei den CCRL-Testern</li><li>Blitz- und 40/15-Ranglisten</li><li>Ergebnisse erscheinen hier</li>", "ro3l": "<li>Eingabeschicht mit Königs-Buckets</li><li>Größere verborgene Schicht</li><li>Über eine Milliarde Trainingsstellungen</li>", "th_h": "Dank.", "t1": "Offene Trainingsdaten (ODbL), mit denen Lucerna 1.0 aus über hundert Millionen Stellungen lernte.", "t2": "Die offene Partiendatenbank (CC0) und die Lichess Elite Database, deren Stellungen Lucerna selbst bewertete.", "t3": "Eine Open-Source-Engine, deren klarer Code uns viele Ideen gab, und die Gegnerin in der Partie oben.", "t4": "Das Werkzeug, das alle unsere Testpartien gespielt hat.", "t5": "Das Programm, mit dem LucernaBot online spielt.", "end": "Die Lampe wird dunkler. Der Bauer wartet auf die nächste Partie.", "f1": "Von Tessera &amp; Claude (Anthropic). Veröffentlicht unter der MIT-Lizenz.", "f3": "Fotos", "f4": "Renderings: unser eigener Code.", "f2": "Nach oben ↑", "k_h": "So denkt sie.", "nps": "Stellungen pro Sekunde", "s1_t": "Die Stellung", "s1_d": "Lucerna erhält das Brett von deinem Schachprogramm, Figur für Figur.", "s2_t": "Bitboards", "s2_d": "Intern wird das Brett zu 12 Blättern mit je 64 Bit, eines pro Figurenart und Farbe. Züge entstehen durch schnelle Bitoperationen.", "s3_t": "Neuronales Netz", "s3_d": "Jede Figur aktiviert ihre Eingänge. 512 Neuronen pro Seite verknüpfen sie mit einer quadrierten, gekappten Aktivierung, und einer von 8 Ausgängen liefert die Bewertung.", "s4_t": "Suche", "s4_d": "Eine Hauptvariantensuche rechnet Millionen Stellungen pro Sekunde voraus. Pruning schneidet unwichtige Varianten ab, und Singular Extensions rechnen tiefer, wenn nur ein Zug gut ist.", "s5_t": "Bester Zug", "s5_d": "Der Zug, der die Suche übersteht, wird gespielt. Alles geschieht in einem Bruchteil einer Sekunde.", "gen": "Nach {mv} bewertet Lucerna die Stellung mit {ev}.", "g_start": "Die Zugnummern zählen ab der zufälligen Startstellung, nicht ab dem üblichen ersten Zug.", "ro1x": "Ein originales NNUE aus drei Datenquellen, singuläre Erweiterungen, Lazy SMP und drei Windows-Builds.", "ro2x": "Bei den Testern für die Blitz- und 40/15-Listen eingereicht; die Ergebnisse erscheinen hier.", "ro3x": "Eine Eingabeschicht mit Königs-Buckets und eine größere verborgene Schicht.", "th_p": "Lucerna 1.0 lernte aus den offenen Trainingsdaten von <a href=\"https://lczero.org/\">Leela Chess Zero</a> (ODbL) und aus Partien der <a href=\"https://database.lichess.org/\">Lichess</a>-Datenbank (CC0) und der <a href=\"https://database.nikonoel.fr/\">Lichess Elite</a> Database, die es selbst bewertete. Der klare Code von <a href=\"https://github.com/mhouppin/stash-bot\">Stash</a> gab uns viele Ideen. <a href=\"https://github.com/cutechess/cutechess\">Cute Chess</a> spielte alle unsere Testpartien, und <a href=\"https://github.com/lichess-bot-devs/lichess-bot\">lichess-bot</a> lässt LucernaBot online spielen. Danke.", "o_h": "Eröffnungen.", "o_p": "Sechs klassische Eröffnungen in Endlosschleife. Die Verteidigungen für Schwarz werden aus Sicht von Schwarz gezeigt, und die Lampe folgt jedem Zug.", "op_it": "Italienische Partie", "op_si": "Sizilianisch · Najdorf", "op_qg": "Abgelehntes Damengambit", "op_ruy": "Spanische Partie", "op_kid": "Königsindisch", "op_fr": "Französisch"}};
+
+/* language */
+const sel = document.getElementById("lang");
+const touch = matchMedia("(hover: none)").matches;
+function pick() {
+  try { const s = localStorage.getItem("lucerna-lang"); if (s && T[s]) return s; } catch (e) {}
+  for (const l of navigator.languages || [navigator.language || "en"]) {
+    const x = l.toLowerCase();
+    if (x.startsWith("zh")) return /tw|hk|mo|hant/.test(x) ? "zh-Hant" : "zh-Hans";
+    for (const k of ["ms", "es", "de", "en"]) if (x.startsWith(k)) return k;
+  }
+  return "en";
+}
+let L = "en";
+function fitLang() {                                                       // a select is as wide as its longest option; size it to the chosen one
+  const m = document.createElement("span"); m.style.cssText = "position:absolute;visibility:hidden;font:500 16px Spectral, serif";
+  m.textContent = sel.options[sel.selectedIndex].text; document.body.appendChild(m); sel.style.width = (m.offsetWidth + 20) + "px"; m.remove();
+}
+function apply(l) {
+  L = l; const d = T[l];
+  document.documentElement.lang = l;
+  document.querySelectorAll("[data-t]").forEach(e => { const k = e.dataset.t; if (d[k] != null) e.innerHTML = d[k]; });
+  sel.value = l; fitLang(); showOpening();
+}
+sel.addEventListener("change", () => { try { localStorage.setItem("lucerna-lang", sel.value); } catch (e) {} apply(sel.value); });
+document.querySelectorAll(".tk").forEach(a => { a.href = `https://github.com/${REPO}/releases/download/v${VERSION}/lucerna-${VERSION}-${a.dataset.file}.exe`; });
+
+/* the search tree over the photograph: a root at the white pawn, three plies deep, the principal variation lit */
+(function () {
+  const svg = document.querySelector(".tree"), NS = "http://www.w3.org/2000/svg";
+  const add = (tag, a) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); svg.appendChild(e); return e; };
+  // [x, y, children or leaf score, on the principal variation]
+  const ROOT = [50, 50, [[88, 30, [[126, 21, [[162, 15, "−0.9"], [165, 25, "−0.4"]]], [129, 35, [[163, 34, "−1.6"]]]]],
+                         [92, 49, [[132, 45, [[170, 41, "+0.31", 1], [172, 51, "+0.12"]], 1], [134, 57, [[168, 61, "−0.2"]]]], 1],
+                         [89, 68, [[127, 67, [[160, 70, "−0.7"]]], [129, 79, [[158, 83, "−2.4"]]]]]], 1];
+  let d = 0;
+  (function walk([x, y, kids, pv]) {
+    kids.forEach(node => {
+      const [cx, cy, sub, onPv] = node, lit = pv && onPv;
+      const l = add("line", { x1: x, y1: y, x2: cx, y2: cy, class: lit ? "pv" : "" }); l.style.transitionDelay = (d++ * 0.12) + "s";
+      if (Array.isArray(sub)) walk([cx, cy, sub, lit]);
+      else { add("circle", { cx, cy, r: .7 }); const t = add("text", { x: cx + 1.6, y: cy + 1, class: lit ? "pv" : "" }); t.textContent = sub; t.style.transitionDelay = (1 + d * 0.08) + "s"; }
+    });
+  })(ROOT);
+  add("circle", { cx: ROOT[0], cy: ROOT[1], r: 1.1 });
+})();
+
+/* see how it thinks: board, bitboards, network, search, best move */
+(function () {
+  const FEN = "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1";
+  const G = { k: "\u265A", q: "\u265B", r: "\u265C", b: "\u265D", n: "\u265E", p: "\u265F" };
+  const rows = FEN.split("/").map(r => r.replace(/\d/g, n => ".".repeat(+n)).split(""));
+  const board = document.getElementById("kBoard"), stack = document.getElementById("kStack"), NS = "http://www.w3.org/2000/svg";
+  rows.forEach((row, r) => row.forEach((p, c) => {
+    const d = document.createElement("div"); if ((r + c) % 2) d.className = "d";
+    if (p !== ".") { d.textContent = G[p.toLowerCase()] + "\uFE0E"; d.classList.add(p === p.toUpperCase() ? "w" : "b"); }
+    board.appendChild(d);
+  }));
+  const NAMES = { p: "pawns", n: "knights", b: "bishops", r: "rooks", q: "queen", k: "king" };
+  ["P", "N", "B", "R", "Q", "K", "p", "n", "b", "r", "q", "k"].forEach((k, i) => {        // one 64-bit sheet per piece type and colour
+    const L = document.createElement("div"); L.className = "layer bb"; L.style.setProperty("--i", i);
+    L.style.setProperty("--c", k === k.toUpperCase() ? "#FFC266" : "#ECE6DA");
+    rows.forEach(row => row.forEach(p => { const d = document.createElement("div"); if (p === k) d.className = "on"; L.appendChild(d); }));
+    const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = (k === k.toUpperCase() ? "white " : "black ") + NAMES[k.toLowerCase()];
+    L.appendChild(lbl); stack.insertBefore(L, board.nextSibling);
+  });
+  const add = (svg, tag, a, parent) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); (parent || svg).appendChild(e); return e; };
+  const net = document.getElementById("kNet");                                // a few of the 768 inputs, 512 hidden neurons, one score
+  const ins = 14, hid = 9, x0 = 70, x1 = 270, x2 = 450, iy = i => 30 + i * (280 / (ins - 1)), hy = j => 50 + j * (240 / (hid - 1));
+  const litIn = new Set([1, 3, 4, 7, 9, 12]), litHid = new Set([0, 2, 3, 5, 8]), edges = add(net, "g", {});
+  for (let i = 0; i < ins; i++) for (let j = 0; j < hid; j++) add(net, "line", { x1: x0, y1: iy(i), x2: x1, y2: hy(j), class: "edge" + (litIn.has(i) && litHid.has(j) && (i + j) % 2 === 0 ? " hot" : "") }, edges);
+  for (let j = 0; j < hid; j++) add(net, "line", { x1: x1, y1: hy(j), x2: x2, y2: 170, class: "edge" + (litHid.has(j) ? " hot" : "") }, edges);
+  for (let i = 0; i < ins; i++) add(net, "circle", { cx: x0, cy: iy(i), r: 6, class: "n" + (litIn.has(i) ? " lit" : "") });
+  for (let j = 0; j < hid; j++) add(net, "circle", { cx: x1, cy: hy(j), r: 8, class: "h" + (litHid.has(j) ? " lit" : "") });
+  add(net, "circle", { cx: x2, cy: 170, r: 13, class: "out" });
+  const label = (x, y, t, c) => { const e = add(net, "text", { x, y, "text-anchor": "middle", class: c || "" }); e.textContent = t; };
+  label(x0, 334, "768 inputs"); label(x1, 334, "512 × 2"); label(x2, 205, "score"); label(x2, 146, "+0.34", "big");
+  const tree = document.getElementById("kTree");                              // three plies, some lines cut off, the best line lit
+  const best = [1, 0, 2], pruned = { "1:2": 1, "2:1": 1, "2:6": 1, "2:7": 1, "3:5": 1, "3:20": 1, "3:21": 1, "3:22": 1, "3:25": 1 };
+  let prev = [[260, 30, true]]; const root = add(tree, "g", { class: "d d1" }); add(tree, "circle", { cx: 260, cy: 30, r: 6 }, root);
+  for (let d = 1; d <= 3; d++) {
+    const next = [], n = prev.length * 3, y = 30 + d * 90, g = add(tree, "g", { class: "d d" + d });
+    prev.forEach(([px, py, onBest], pi) => { for (let k = 0; k < 3; k++) {
+      const id = pi * 3 + k, x = 20 + (id + 0.5) * (480 / n), isBest = onBest && k === best[d - 1];
+      const sub = add(tree, "g", { class: isBest ? "best" : (pruned[d + ":" + id] ? "pruned" : "") }, g);
+      add(tree, "line", { x1: px, y1: py, x2: x, y2: y }, sub); add(tree, "circle", { cx: x, cy: y, r: d === 3 ? 3.2 : 4.5 }, sub);
+      next.push([x, y, isBest]); } });
+    prev = next;
+  }
+  const stick = document.getElementById("thinkStick"), track = document.getElementById("thinkTrack");
+  const steps = [...stick.querySelectorAll(".step")], pager = [...stick.querySelectorAll(".pager i")], nps = document.getElementById("kNps");
+  let stage = 1;
+  function count() { const t0 = performance.now(), goal = 1250000;
+    (function f(t) { const k = Math.min(1, (t - t0) / 1300), e = 1 - Math.pow(1 - k, 3); nps.textContent = Math.round(goal * e).toLocaleString(); if (k < 1) requestAnimationFrame(f); })(t0); }
+  function setStage(n) {
+    if (n === stage) return;
+    stick.classList.replace("s" + stage, "s" + n); stage = n;
+    steps.forEach((e, i) => e.classList.toggle("on", i === n - 1)); pager.forEach((e, i) => e.classList.toggle("on", i === n - 1));
+    if (n === 4) count();
+  }
+  addEventListener("scroll", () => { const r = track.getBoundingClientRect(), span = r.height - innerHeight;
+    setStage(Math.min(5, 1 + Math.floor(Math.min(.999, Math.max(0, -r.top / span)) * 5))); }, { passive: true });
+})();
+
+/* openings, played on a loop; Black's defences are seen from Black's side */
+const OPENINGS = [
+  ["it", "w", "e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 c2c3 g8f6 d2d3 d7d6 e1g1 e8g8 f3g5", "e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3 d6 O-O O-O Ng5"],
+  ["si", "b", "e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6 b1c3 a7a6", "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6"],
+  ["qg", "w", "d2d4 d7d5 c2c4 e7e6 b1c3 g8f6 c1g5 f8e7 e2e3 e8g8 g1f3", "d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3"],
+  ["ruy", "w", "e2e4 e7e5 g1f3 b8c6 f1b5 a7a6 b5a4 g8f6 e1g1 f8e7 f1e1 b7b5 a4b3", "e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3"],
+  ["kid", "b", "d2d4 g8f6 c2c4 g7g6 b1c3 f8g7 e2e4 d7d6 g1f3 e8g8 f1e2 e7e5", "d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2 e5"],
+  ["fr", "b", "e2e4 e7e6 d2d4 d7d5 b1c3 g8f6 c1g5 f8e7 e4e5 f6d7", "e4 e6 d4 d5 Nc3 Nf6 Bg5 Be7 e5 Nfd7"],
+].map(([key, side, uci, san]) => ({ key, black: side === "b", moves: uci.split(" "), san: san.split(" ") }));
+const GLYPH = { k: "\u265A", q: "\u265B", r: "\u265C", b: "\u265D", n: "\u265E", p: "\u265F" };
+const ob = document.getElementById("ob"), obIn = document.getElementById("obIn");
+const opName = document.getElementById("opName"), opMoves = document.getElementById("opMoves"), opNum = document.getElementById("opNum");
+const xy = s => ["abcdefgh".indexOf(s[0]), 8 - +s[1]];
+for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) { const d = document.createElement("div"); d.className = "osq" + ((r + c) % 2 ? "" : " l"); d.style.left = c * 12.5 + "%"; d.style.top = r * 12.5 + "%"; obIn.appendChild(d); }
+const hl = [0, 1].map(() => { const h = document.createElement("div"); h.className = "ohl"; obIn.appendChild(h); return h; });
+let pieces = {};
+const place = (p, s) => { const [c, r] = xy(s); p.style.left = c * 12.5 + "%"; p.style.top = r * 12.5 + "%"; };
+"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR".split("/").forEach((row, r) => { let c = 0; for (const ch of row) {
+  if (/\d/.test(ch)) { c += +ch; continue; }
+  const p = document.createElement("span"), s = "abcdefgh"[c] + (8 - r);
+  p.className = "pc " + (ch === ch.toUpperCase() ? "w" : "b"); p.textContent = GLYPH[ch.toLowerCase()] + "\uFE0E";
+  p.dataset.home = s; place(p, s); obIn.appendChild(p); pieces[s] = p; c++; } });
+let cur = 0, at = -1;
+function showOpening() {
+  const o = OPENINGS[cur];
+  opNum.textContent = (cur + 1) + " / " + OPENINGS.length;
+  opName.textContent = T[L]["op_" + o.key];
+  opMoves.innerHTML = "";
+  o.san.forEach((m, k) => { if (k % 2 === 0) { const li = document.createElement("li"); li.innerHTML = `<span class="n">${k / 2 + 1}.</span>`; opMoves.appendChild(li); }
+    const a = document.createElement("span"); a.className = "m" + (k <= at ? " done" : "") + (k === at ? " on" : ""); a.textContent = m; opMoves.lastChild.appendChild(a); });
+}
+function lightSq(sq) {                                                        // the light follows the piece that just moved
+  let [c, r] = xy(sq); if (obIn.classList.contains("flip")) { c = 7 - c; r = 7 - r; }
+  ob.style.setProperty("--gx", ((c + .5) * 12.5) + "%"); ob.style.setProperty("--gy", ((r + .5) * 12.5) + "%");
+}
+function step(o, i) {
+  const m = o.moves[i], from = m.slice(0, 2), to = m.slice(2, 4), p = pieces[from];
+  if (ghost) { const g = ghost; ghost = null; g.classList.add("gone"); setTimeout(() => g.remove(), 500); }
+  if (pieces[to]) pieces[to].style.opacity = 0;
+  place(p, to); pieces[to] = p; delete pieces[from];
+  [from, to].forEach((s, k) => { const [c, r] = xy(s); hl[k].style.left = c * 12.5 + "%"; hl[k].style.top = r * 12.5 + "%"; hl[k].style.opacity = 1; });
+  if (o.san[i] === "O-O") { const y = m[1], rk = pieces["h" + y]; place(rk, "f" + y); pieces["f" + y] = rk; delete pieces["h" + y]; }
+  at = i; lightSq(to); showOpening(); ob.classList.remove("flare"); void ob.offsetWidth; ob.classList.add("flare");
+}
+let ghost = null;
+function foresee(o, i) {                                                   // the engine's shadow of the move, a moment before the hand
+  const m = o.moves[i], p = pieces[m.slice(0, 2)];
+  ghost = document.createElement("span"); ghost.className = "pc ghost"; ghost.textContent = p.textContent;
+  place(ghost, m.slice(2, 4)); obIn.appendChild(ghost); lightSq(m.slice(2, 4));
+}
+function gather() {
+  pieces = {};
+  obIn.querySelectorAll(".pc").forEach(p => { place(p, p.dataset.home); p.style.opacity = 1; pieces[p.dataset.home] = p; });
+  hl.forEach(h => h.style.opacity = 0); ob.style.setProperty("--gx", "50%"); ob.style.setProperty("--gy", "50%");
+}
+let playing = false;
+const nap = ms => new Promise(r => setTimeout(r, ms));
+async function loop() {
+  while (true) {
+    const o = OPENINGS[cur]; at = -1; showOpening();
+    if (obIn.classList.contains("flip") !== o.black) { obIn.classList.toggle("flip", o.black); await nap(1100); }
+    await nap(900);
+    for (let i = 0; i < o.moves.length; i++) { while (!playing) await nap(300); step(o, i); await nap(1100); }
+    await nap(2200);
+    obIn.classList.add("gather"); gather(); await nap(1200); obIn.classList.remove("gather");
+    cur = (cur + 1) % OPENINGS.length;
+  }
+}
+new IntersectionObserver(es => { playing = es[0].isIntersecting; }, { threshold: 0.25 }).observe(ob);
+if (!matchMedia("(prefers-reduced-motion: reduce)").matches) loop();
+
+/* the data board: 64 squares, coloured by source */
+const db = document.getElementById("dboard");
+const share = [["a", 32], ["b", 28], ["c", 4]], cls = []; share.forEach(([c, n]) => { for (let i = 0; i < n; i++) cls.push(c); });
+for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++) {                 // fill from White's side upwards, like pieces advancing
+  const i = document.createElement("i"), idx = (7 - r) * 8 + f; i.className = cls[idx] + ((r + f) % 2 ? " l" : ""); i.dataset.idx = idx; db.appendChild(i);
+}
+
+/* the lamp: a perspective board, a pawn, and the king's shadow that follows the light */
+const hero = document.querySelector(".hero"), stage = document.getElementById("stage"), board = document.getElementById("board");
+const pawn = document.getElementById("pawn"), shadow = document.getElementById("shadow"), poolE = document.getElementById("poolE");
+const flame = document.getElementById("flameC"), dark = document.getElementById("dark"), title = document.getElementById("title");
+const foot = document.getElementById("foot"), wallC = document.getElementById("wallC"), pg0 = document.getElementById("pg0"), pg1 = document.getElementById("pg1");
+const NS = "http://www.w3.org/2000/svg";
+let W = 0, H = 0, base = { x: 0, y: 0, s: 1 }, lamp = { x: 0, y: 0 }, aim = { x: 0, y: 0 }, follow = false, running = false;
+if (touch) hero.classList.add("touch");
+function home(a) {                                                         // where the lamp rests: left of the pawn, so the king shows on the lit wall
+  const n = W < 760;
+  return { x: base.x - W * (n ? 0.26 : 0.17) + Math.sin(a * 0.35) * W * (n ? 0.1 : 0.07), y: base.y - H * (n ? 0.22 : 0.34) + Math.sin(a * 0.5) * H * 0.04 };
+}
+function layout() {
+  W = hero.clientWidth; H = hero.clientHeight;
+  stage.setAttribute("viewBox", `0 0 ${W} ${H}`); document.getElementById("flameS").setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const narrow = W < 760, cx = narrow ? W * 0.58 : W * 0.62, horizon = H * (narrow ? 0.42 : 0.40);
+  const bw = Math.min(narrow ? W * 1.25 : W * 0.78, 1100), z0 = 5.2, k = bw * z0 / 8, h = (H * (narrow ? 0.80 : 1.02) - horizon) * z0 / k;
+  const P = (X, Z) => [cx + X * k / Z, horizon + h * k / Z];
+  board.innerHTML = "";
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const za = z0 + r, zb = z0 + r + 1, xa = c - 4, xb = c - 3, q = document.createElementNS(NS, "polygon");
+    q.setAttribute("points", [P(xa, za), P(xb, za), P(xb, zb), P(xa, zb)].map(p => p.join(",")).join(" "));
+    q.setAttribute("fill", (r + c) % 2 ? "#3A332A" : "#6E6252"); q.setAttribute("stroke", "rgba(255,227,179,.05)");
+    board.appendChild(q);
+  }
+  const Zp = z0 + 3.5, sq = k / Zp, [bx, by] = P(0.5, Zp);
+  base = { x: bx, y: by, s: sq * 0.9 / 38 };
+  pawn.setAttribute("transform", `translate(${bx} ${by}) scale(${base.s * 1.9})`);
+  if (!follow) { aim = home(0); if (!lamp.x) lamp = { ...aim }; }
+  draw();
+}
+function draw() {
+  const dx = base.x - lamp.x;
+  const sk = -Math.max(-36, Math.min(36, Math.atan2(dx, H * 0.55) * 180 / Math.PI));   // the shadow leans away from the light
+  const low = Math.min(1, Math.max(0, lamp.y / (base.y || 1)));                         // a lower lamp throws a taller shadow
+  const S = base.s * 2.6, room = (base.y - 150) / (100 * S);                           // keep the cross clear of the title bar
+  shadow.setAttribute("transform", `translate(${base.x + Math.sign(dx) * 4} ${base.y}) skewX(${sk}) scale(${S} ${S * Math.max(0.6, Math.min(1.05 + low * 0.9, room))})`);
+  wallC.setAttribute("cx", lamp.x); wallC.setAttribute("cy", lamp.y); wallC.setAttribute("r", Math.max(W, H) * 0.75);
+  foot.setAttribute("cx", base.x + Math.max(-1, Math.min(1, dx / 300)) * base.s * 22); foot.setAttribute("cy", base.y);
+  foot.setAttribute("rx", base.s * 60); foot.setAttribute("ry", base.s * 12);
+  poolE.setAttribute("cx", lamp.x); poolE.setAttribute("cy", Math.max(lamp.y, base.y - 30) + 10);
+  poolE.setAttribute("rx", Math.max(W, 600) * 0.32); poolE.setAttribute("ry", Math.max(W, 600) * 0.09);
+  flame.setAttribute("cx", lamp.x); flame.setAttribute("cy", lamp.y);
+  const left = lamp.x < base.x;
+  pg0.setAttribute("stop-color", left ? "#FFF4E2" : "#8A8172"); pg1.setAttribute("stop-color", left ? "#8A8172" : "#FFF4E2");
+  dark.style.setProperty("--lx", lamp.x + "px"); dark.style.setProperty("--ly", lamp.y + "px");
+  const r = title.getBoundingClientRect(), hr = hero.getBoundingClientRect();
+  title.style.setProperty("--tx", (lamp.x - (r.left - hr.left)) + "px"); title.style.setProperty("--ty", (lamp.y - (r.top - hr.top)) + "px");
+}
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let t0 = performance.now();
+function tick(t) {
+  if (!running) return;
+  if (!follow && !still && performance.now() - tiltAt > 1500) aim = home((t - t0) / 1000);
+  lamp.x += (aim.x - lamp.x) * 0.08; lamp.y += (aim.y - lamp.y) * 0.08;
+  draw(); requestAnimationFrame(tick);
+}
+function point(e) { const r = hero.getBoundingClientRect(); aim = { x: e.clientX - r.left, y: e.clientY - r.top }; follow = true; }
+hero.addEventListener("pointermove", e => { if (e.pointerType === "mouse" || e.buttons) point(e); });
+hero.addEventListener("pointerdown", point);
+hero.addEventListener("pointerleave", () => { follow = false; t0 = performance.now(); });
+hero.addEventListener("pointerup", e => { if (e.pointerType !== "mouse") follow = false; });
+new IntersectionObserver(es => { const on = es[0].isIntersecting; if (on && !running) { running = true; requestAnimationFrame(tick); } else if (!on) running = false; }).observe(hero);
+addEventListener("resize", layout);
+
+/* the guide: the hero's lamp leaves the room and walks the reader through every chapter, then goes out */
+const root = document.documentElement, guide = document.getElementById("guide");
+function lampAt(x, y) { root.style.setProperty("--mx", x + "px"); root.style.setProperty("--my", y + "px"); }
+const chapters = [...document.querySelectorAll("main > section:not(.hero)"), document.getElementById("end")];
+const dsq = [...db.children], nextP = [...document.querySelectorAll(".next p")];
+const gpos = { x: innerWidth * 0.4, y: innerHeight * 0.3 }, center = el => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+let litCount = -1, endOut = false, lastSec = null;
+function guideTarget() {
+  const hr = hero.getBoundingClientRect();
+  if (hr.bottom > innerHeight * 0.45) return { x: hr.left + lamp.x, y: hr.top + lamp.y, show: false };   // still in the room: it is the hero's lamp
+  const mid = innerHeight * 0.45;
+  let sec = chapters.find(c => { const r = c.getBoundingClientRect(); return r.top <= mid && r.bottom > mid; }) || chapters[chapters.length - 1];
+  chapters.forEach(c => c.classList.toggle("dim", c !== sec && c.id !== "end"));
+  if (sec !== lastSec) { lastSec = sec; guide.classList.remove("arrive"); void guide.offsetWidth; guide.classList.add("arrive"); }
+  const r = sec.getBoundingClientRect(), t = Math.min(1, Math.max(0, (innerHeight * 0.6 - r.top) / r.height));
+  switch (sec.id) {
+    case "game": { const b = ob.getBoundingClientRect(), sq = b.width / 8;                                // above the square the last piece landed on
+      const gx = parseFloat(ob.style.getPropertyValue("--gx")) || 50, gy = parseFloat(ob.style.getPropertyValue("--gy")) || 50;
+      return { x: b.left + b.width * gx / 100, y: b.top + b.height * gy / 100 - sq * 0.9, show: true }; }
+    case "mark": { const f = sec.querySelector("figure .pic").getBoundingClientRect(); return { x: f.left + f.width * 0.2, y: f.top + f.height * 0.18, show: true }; }
+    case "inside": { const f = sec.querySelector(".band .pic").getBoundingClientRect(); return { x: f.left + f.width * (0.12 + 0.76 * t), y: Math.max(90, f.top + f.height * 0.2), show: true }; }
+    case "data": { const n = Math.round(Math.min(1, Math.max(0, (t - 0.12) / 0.6)) * 64);              // the board fills square by square
+      if (n !== litCount) { litCount = n; dsq.forEach(i => i.classList.toggle("on", +i.dataset.idx < n)); }
+      const last = dsq.find(i => +i.dataset.idx === Math.max(0, n - 1)); const [x, y] = center(last); return { x, y: y - last.offsetHeight * 0.8, show: true }; }
+    case "get": { const b = sec.querySelector(".builds").getBoundingClientRect(); return { x: b.left - 28, y: b.top + 30 + (b.height - 60) * t, show: true }; }
+    case "road": { const k = Math.min(2, Math.floor(Math.max(0, t - 0.1) * 4.2)); nextP.forEach((p, i) => p.classList.toggle("lit", i <= k));
+      const bb = nextP[k].querySelector("b").getBoundingClientRect(); return { x: bb.left - 26, y: bb.top + bb.height * 0.4, show: true }; }
+    case "thanks": { const o = sec.querySelector(".orn").getBoundingClientRect(); return { x: o.left + o.width / 2, y: o.top - 26, show: true }; }
+    case "end": { const sv = sec.querySelector("svg").getBoundingClientRect(), fx = sv.left + sv.width * 120 / 560, fy = sv.top + sv.height * 110 / 360;
+      const fs = innerWidth < 760 ? .6 : 1; sec.style.setProperty("--fs", fs); sec.style.setProperty("--fx", (fx - r.left - 0.631 * 760 * fs) + "px"); sec.style.setProperty("--fy", (fy - r.top - 0.442 * 570 * fs) + "px");
+      return { x: fx, y: fy, show: true, end: true }; }
+  }
+  return { x: gpos.x, y: gpos.y, show: true };
+}
+const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function guideTick() {
+  const g = guideTarget();
+  if (innerWidth < 760 && !g.end && g.show) g.x = innerWidth - 12;
+  const k = calm ? 1 : 0.1; gpos.x += (g.x - gpos.x) * k; gpos.y += (g.y - gpos.y) * k;
+  guide.style.transform = `translate(${gpos.x}px, ${gpos.y}px)`;
+  guide.classList.toggle("on", g.show && !endOut);
+  if (g.end && !endOut && document.getElementById("end").classList.contains("out")) { endOut = true; guide.classList.add("out"); }
+  if (!g.end && endOut) { endOut = false; guide.classList.remove("out"); }
+  lampAt(gpos.x, gpos.y);
+  requestAnimationFrame(guideTick);
+}
+requestAnimationFrame(guideTick);
+/* on phones the hero's lamp can follow the tilt of the device */
+if (touch) addEventListener("deviceorientation", e => { if (e.gamma == null || follow) return;
+  aim = { x: base.x - W * 0.26 + Math.max(-1, Math.min(1, e.gamma / 35)) * W * 0.3, y: base.y - H * 0.22 + Math.max(-1, Math.min(1, (e.beta - 50) / 35)) * H * 0.08 }; tiltAt = performance.now(); });
+let tiltAt = 0;
+
+/* reveal on scroll; the data board fills; the last lamp dims */
+const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { rootMargin: "0px 0px -8% 0px" });
+document.querySelectorAll(".rv").forEach(e => io.observe(e));
+new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) e.target.classList.add("out"); }), { threshold: 0.5 }).observe(document.getElementById("end"));
+
+layout();
+apply(pick());
+setTimeout(() => { hero.classList.add("lit"); document.body.classList.add("lit"); }, 1800);
+if (document.fonts) document.fonts.ready.then(fitLang);
+</script>
+</body>
+</html>

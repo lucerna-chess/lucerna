@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 128" role="img" aria-label="Lucerna">
+  <style>
+    .word { fill: #1D1B18; font-family: 'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif; font-weight: 600; }
+    .tag { fill: #6E675E; font-family: 'Segoe UI', system-ui, sans-serif; font-weight: 600; }
+    @media (prefers-color-scheme: dark) { .word { fill: #F6F1E7; } .tag { fill: #B9AE9E; } }
+  </style>
+  <g>
+  <!-- In the lamp's light, a pawn casts the shadow of a king -->
+  <rect width="128" height="128" rx="28" fill="#D9472B"/>
+  <circle cx="21" cy="23" r="13" fill="#FFF3E2" opacity="0.10"/>
+  <circle cx="21" cy="23" r="8.5" fill="#FFF3E2" opacity="0.20"/>
+  <circle cx="21" cy="23" r="4.8" fill="#FFF3E2"/>
+  <rect x="14" y="108" width="100" height="2.2" rx="1.1" fill="#8F2A16" opacity="0.55"/>
+  <g fill="#8A2814" transform="translate(52 109) skewX(-22) scale(0.97)">
+    <path d="M-3.2 -100 H3.2 V-93 H10 V-86.6 H3.2 V-79 H-3.2 V-86.6 H-10 V-93 H-3.2 Z"/>
+    <path d="M-17 -76 C-6 -80 6 -80 17 -76 C15 -70 12.5 -64 11.5 -57 H-11.5 C-12.5 -64 -15 -70 -17 -76 Z"/>
+    <path d="M-15 -55.5 Q0 -58.5 15 -55.5 Q16.5 -52.5 15 -49.5 Q0 -51.5 -15 -49.5 Q-16.5 -52.5 -15 -55.5 Z"/>
+    <path d="M-8.5 -49 H8.5 C8.8 -34 11.5 -22 19 -13 H-19 C-11.5 -22 -8.8 -34 -8.5 -49 Z"/>
+    <path d="M-21 -13 H21 Q25 -11 25 -7 V-3 Q25 0 21 0 H-21 Q-25 0 -25 -3 V-7 Q-25 -11 -21 -13 Z"/>
+  </g>
+  <g fill="#1D1B18" transform="translate(44 109)">
+    <circle cx="0" cy="-50" r="10"/>
+    <path d="M-11.5 -39 Q0 -42 11.5 -39 Q12.8 -36.5 11.5 -34 Q0 -35.6 -11.5 -34 Q-12.8 -36.5 -11.5 -39 Z"/>
+    <path d="M-6.4 -34 H6.4 C6.6 -24 8.8 -16.5 14 -10.5 H-14 C-8.8 -16.5 -6.6 -24 -6.4 -34 Z"/>
+    <path d="M-15.5 -10.5 H15.5 Q19 -9 19 -5.5 V-2.5 Q19 0 15.5 0 H-15.5 Q-19 0 -19 -2.5 V-5.5 Q-19 -9 -15.5 -10.5 Z"/>
+  </g>
+</g>
+  <text class="word" x="140" y="78" font-size="62">Lucerna</text>
+  <text class="tag" x="143" y="102" font-size="12.5" letter-spacing="4">CHESS ENGINE</text>
+</svg>
